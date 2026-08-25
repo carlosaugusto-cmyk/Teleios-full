@@ -1,0 +1,34 @@
+version: '3.8'
+
+services:
+  gateway-rust:
+    build:
+      context: ./gateway-rust
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - RUST_GATEWAY_SECRET=${RUST_GATEWAY_SECRET:-dev_rust_secret_12345}
+      - WHATSAPP_SERVICE_URL=http://whatsapp-go:8080
+    depends_on:
+      - whatsapp-go
+    restart: unless-stopped
+
+  whatsapp-go:
+    build:
+      context: ./whatsapp-service-go
+      dockerfile: Dockerfile
+    expose:
+      - "8080"
+    volumes:
+      - whatsapp_data:/app/data
+    environment:
+      - WHATSAPP_API_SECRET=${RUST_GATEWAY_SECRET:-dev_rust_secret_12345}
+      - AGENT_DO_URL=${AGENT_DO_URL:?AGENT_DO_URL is required}
+      - AGENT_SECRET=${AGENT_SECRET:?AGENT_SECRET is required}
+      - AGENT_ID=${AGENT_ID:-agent_vps_001}
+      - STORE_DB_PATH=/app/data/store.db
+    restart: unless-stopped
+
+volumes:
+  whatsapp_data:

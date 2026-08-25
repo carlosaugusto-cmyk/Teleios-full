@@ -1,0 +1,6 @@
+{
+  "name": "AutoHub Media & AI Pipeline",
+  "description": "Portal público do Ministério Teleios (acolhimento, projetos sociais, estudos, vídeos e contato) e plataforma de gestão multimídia com navegação por sidebar, status de conexões, Google Drive, Gemini AI, WhatsApp VPS e YouTube API.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

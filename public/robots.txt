@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://teleios-platform.pages.dev/sitemap.xml
