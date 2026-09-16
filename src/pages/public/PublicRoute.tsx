@@ -1,61 +1,35 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { LandingPage } from './LandingPage.tsx';
-import { AuthModal } from '../../components/common/AuthModal.tsx';
-import { Study, MediaFile, VideoMetadata, AuthSession } from '../../types/index.ts';
-import { loadSession } from '../../services/security.service.ts';
-import { apiFetch } from '../../services/api.service.ts';
+import { Study, MediaFile, VideoMetadata } from '../../types/index.ts';
+import { safeApiFetch } from '../../utils/contentSanitizer.ts';
 
 export default function PublicRoute() {
   const [studies, setStudies] = useState<Study[]>([]);
   const [galeriaFiles, setGaleriaFiles] = useState<MediaFile[]>([]);
   const [videos, setVideos] = useState<VideoMetadata[]>([]);
-  const [authModalOpen, setAuthModalOpen] = useState<boolean>(false);
-  const [session, setSession] = useState<AuthSession | null>(null);
-  const navigate = useNavigate();
+  const [isLoading, setIsLoading] = useState<boolean>(true);
 
   useEffect(() => {
-    const saved = loadSession();
-    if (saved) setSession(saved);
-    // Load public data
+    setIsLoading(true);
     Promise.all([
-      apiFetch('/api/estudos').then(r => r.json()).catch(() => ({ success: false })),
-      apiFetch('/api/galeria').then(r => r.json()).catch(() => ({ success: false })),
-      apiFetch('/api/videos').then(r => r.json()).catch(() => ({ success: false })),
+      safeApiFetch<Study[]>('/api/estudos'),
+      safeApiFetch<MediaFile[]>('/api/galeria'),
+      safeApiFetch<VideoMetadata[]>('/api/videos'),
     ]).then(([e, g, v]) => {
-      if (e.success) setStudies(e.data);
-      if (g.success) setGaleriaFiles(g.data);
-      if (v.success) setVideos(v.data);
+      if (e.success && Array.isArray(e.data)) setStudies(e.data);
+      if (g.success && Array.isArray(g.data)) setGaleriaFiles(g.data);
+      if (v.success && Array.isArray(v.data)) setVideos(v.data);
+    }).finally(() => {
+      setIsLoading(false);
     });
   }, []);
 
-  const handleRequestAdmin = () => {
-    if (session) {
-      navigate('/admin');
-    } else {
-      setAuthModalOpen(true);
-    }
-  };
-
-  const handleLoginSuccess = (newSession: AuthSession) => {
-    setSession(newSession);
-    setAuthModalOpen(false);
-    navigate('/admin');
-  };
-
   return (
-    <>
-      <LandingPage
-        studies={studies}
-        galeriaFiles={galeriaFiles}
-        videos={videos}
-        onOpenAdmin={handleRequestAdmin}
-      />
-      <AuthModal
-        isOpen={authModalOpen}
-        onClose={() => setAuthModalOpen(false)}
-        onLoginSuccess={handleLoginSuccess}
-      />
-    </>
+    <LandingPage
+      studies={studies}
+      galeriaFiles={galeriaFiles}
+      videos={videos}
+      isLoading={isLoading}
+    />
   );
 }

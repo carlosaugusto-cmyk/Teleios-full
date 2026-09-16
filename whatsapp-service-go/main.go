@@ -8,7 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-
+"github.com/joho/godotenv"
 	"github.com/teleios/whatsapp-service-go/internal/handler"
 	"github.com/teleios/whatsapp-service-go/internal/agent"
 
@@ -18,6 +18,16 @@ import (
 )
 
 func main() {
+	if err := godotenv.Load(); err != nil {
+        log.Println("[ENV] Arquivo .env não encontrado. Usando variáveis do sistema.")
+    } else {
+        log.Println("[ENV] .env carregado com sucesso.")
+    }
+
+	log.Printf("[ENV] AGENT_ID=%s", os.Getenv("AGENT_ID"))
+    log.Printf("[ENV] AGENT_DO_URL=%s", os.Getenv("AGENT_DO_URL"))
+    log.Printf("[ENV] STORE_DB_PATH=%s", os.Getenv("STORE_DB_PATH"))
+	
 	// Secret key for Gateway and DO connection
 	apiSecret := os.Getenv("WHATSAPP_API_SECRET")
 	if apiSecret == "" {
@@ -39,19 +49,19 @@ func main() {
 	if storePath == "" {
 		storePath = "store.db"
 	}
-	container, err := sqlstore.New("sqlite3", "file:"+storePath+"?_foreign_keys=on", nil)
+	ctx := context.Background()
+
+	container, err := sqlstore.New(ctx, "sqlite3", "file:"+storePath+"?_foreign_keys=on", nil)
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
 
-	deviceStore, err := container.GetFirstDevice()
+	deviceStore, err := container.GetFirstDevice(ctx)
 	if err != nil {
 		log.Fatalf("Failed to get device: %v", err)
 	}
 
 	client := whatsmeow.NewClient(deviceStore, nil)
-
-	h := handler.NewHandler(client, apiSecret)
 
 	// Inicia componentes do Agent
 	agentSecret := os.Getenv("AGENT_SECRET")
@@ -59,8 +69,18 @@ func main() {
 		log.Fatal("AGENT_SECRET is required to connect to the coordinator")
 	}
 	wsClient := agent.NewWSClient(doURL, agentSecret, agentID)
-	jobRunner := agent.NewJobRunner(client, wsClient)
-	connManager := agent.NewConnectionManager(client, wsClient, jobRunner)
+
+	var connManager *agent.ConnectionManager
+	clientProvider := func() *whatsmeow.Client {
+		if connManager != nil {
+			return connManager.GetClient()
+		}
+		return client
+	}
+
+	jobRunner := agent.NewJobRunnerWithProvider(clientProvider, wsClient)
+	connManager = agent.NewConnectionManager(container, client, wsClient, jobRunner)
+	h := handler.NewHandlerWithProvider(clientProvider, apiSecret)
 
 	log.Println("Starting Connection Manager...")
 	connManager.Start()
@@ -71,9 +91,11 @@ func main() {
 		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 	})
 	mux.HandleFunc("/send", h.RequireAuth(h.SendText))
-	mux.HandleFunc("/qr", h.RequireAuth(h.GetQR)) 
+	mux.HandleFunc("/qr", h.RequireAuth(h.GetQR))
+	mux.HandleFunc("/groups", h.GetGroups)
 	mux.HandleFunc("/status", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Access-Control-Allow-Origin", "*")
 		json.NewEncoder(w).Encode(connManager.Status())
 	})
 

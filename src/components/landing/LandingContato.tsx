@@ -1,113 +1,151 @@
 import React, { useState } from 'react';
-import { Mail, Send, MapPin, Clock, CheckCircle2 } from 'lucide-react';
+import { Heart, Send, CheckCircle2, AlertCircle, RefreshCw, ShieldCheck, Phone, User } from 'lucide-react';
+import confetti from 'canvas-confetti';
 
 export const LandingContato: React.FC = () => {
-  const [formSubmitted, setFormSubmitted] = useState(false);
-  
-  const handleSubmitContact = (e: React.FormEvent) => {
+  const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setFormSubmitted(true);
-    setTimeout(() => {
-      setFormSubmitted(false);
-      (e.target as HTMLFormElement).reset();
-    }, 4000);
+    if (!name.trim()) {
+      setFeedback({ type: 'error', text: 'Por favor, informe seu nome.' });
+      return;
+    }
+    if (!phone.trim()) {
+      setFeedback({ type: 'error', text: 'Por favor, informe seu número de telefone/WhatsApp.' });
+      return;
+    }
+
+    setIsSubmitting(true);
+    setFeedback(null);
+
+    try {
+      const res = await fetch('https://teleios-api-worker.ca88321499.workers.dev/api/leads/oracao', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: name.trim(),
+          phone: phone.trim(),
+        }),
+      });
+
+      const json = await res.json();
+      if (json.success) {
+        confetti({ particleCount: 50, spread: 60, origin: { y: 0.8 } });
+        setFeedback({
+          type: 'success',
+          text: 'Seu pedido de oração foi recebido! Nossa equipe e pastores estarão intercedendo por você.',
+        });
+        setName('');
+        setPhone('');
+      } else {
+        setFeedback({ type: 'error', text: json.error || 'Erro ao enviar pedido de oração.' });
+      }
+    } catch {
+      setFeedback({ type: 'error', text: 'Erro de conexão ao enviar pedido. Verifique sua conexão.' });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
-    <section id="contato" className="py-16 space-y-12 scroll-mt-24">
-      <div className="text-center max-w-2xl mx-auto space-y-3">
-        <span className="text-sm font-bold uppercase tracking-widest text-brand-blue">Comunicação Direta</span>
-        <h2 className="text-4xl sm:text-5xl font-serif font-bold text-text-primary">
-          Estamos Prontos para Ouvir Você
+    <section id="contato" className="scroll-mt-24">
+      <div id="oracao" className="bg-[#0A0F1A] border border-[#374151] rounded-3xl p-6 sm:p-12 shadow-2xl space-y-8 scroll-mt-24">
+      {/* Header */}
+      <div className="text-center max-w-xl mx-auto space-y-3">
+        <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-blue-950/70 border border-blue-800 text-blue-300 text-xs font-bold uppercase tracking-wider">
+          <Heart className="w-3.5 h-3.5 fill-blue-400 text-blue-400" />
+          <span>Intercessão & Oração</span>
+        </div>
+        <h2 className="text-2xl sm:text-4xl font-serif font-bold text-white tracking-tight">
+          Precisa de Oração?
         </h2>
-        <p className="text-base text-text-secondary">
-          Preencha o formulário abaixo ou use os canais diretos para pedir oração ou mais informações.
+        <p className="text-xs sm:text-sm text-[#9CA3AF] leading-relaxed">
+          Informe apenas seu nome e telefone. Estaremos orando por você e sua família. É rápido e sigiloso.
         </p>
       </div>
 
-      <div className="bg-secondary rounded-2xl border border-border-default p-6 sm:p-8 shadow-sm grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <div className="space-y-6">
-          <h3 className="font-serif font-bold text-xl text-text-primary">Envie sua Mensagem</h3>
-
-          {formSubmitted && (
-            <div className="p-4 rounded-lg bg-brand-green/10 border border-brand-green/30 text-brand-green flex items-center gap-3">
-              <CheckCircle2 className="w-5 h-5 flex-shrink-0" />
-              <span className="font-medium">Mensagem enviada com sucesso!</span>
-            </div>
+      {/* Feedback Banner */}
+      {feedback && (
+        <div
+          className={`p-4 rounded-xl border text-xs font-medium flex items-center gap-2.5 animate-fade-in max-w-lg mx-auto ${feedback.type === 'success'
+            ? 'bg-emerald-950/80 border-emerald-800 text-emerald-300'
+            : 'bg-rose-950/80 border-rose-800 text-rose-300'
+            }`}
+        >
+          {feedback.type === 'success' ? (
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+          ) : (
+            <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
           )}
-
-          <form onSubmit={handleSubmitContact} className="space-y-5" noValidate>
-            <div>
-              <label className="block text-sm font-medium text-text-secondary mb-2">Nome Completo</label>
-              <input required type="text" className="w-full px-4 py-3 bg-tertiary border border-border-default rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-blue" />
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-text-secondary mb-2">Telefone/WhatsApp</label>
-              <input required type="tel" className="w-full px-4 py-3 bg-tertiary border border-border-default rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-blue" />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-text-secondary mb-2">Assunto</label>
-              <select className="w-full px-4 py-3 bg-tertiary border border-border-default rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-blue">
-                <option value="acolhimento">Pedido de Oração & Acolhimento</option>
-                <option value="projetos">Projetos Sociais</option>
-                <option value="outro">Outro Assunto</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-text-secondary mb-2">Mensagem</label>
-              <textarea required rows={4} className="w-full px-4 py-3 bg-tertiary border border-border-default rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-blue"></textarea>
-            </div>
-
-            <button type="submit" disabled={formSubmitted} className="w-full sm:w-auto px-8 py-4 bg-brand-blue hover:bg-brand-blue/90 text-white font-bold text-sm uppercase tracking-wider rounded-lg flex items-center justify-center gap-2 transition-colors">
-              <Send className="w-5 h-5" />
-              <span>Enviar Mensagem</span>
-            </button>
-          </form>
+          <span>{feedback.text}</span>
         </div>
+      )}
 
-        <div className="space-y-6">
-          <h3 className="font-serif font-bold text-xl text-text-primary">Canais Diretos</h3>
-
-          <div className="space-y-4">
-            <a href="https://wa.me/5511999999999" target="_blank" rel="noreferrer" className="flex items-center gap-4 p-4 bg-tertiary rounded-xl border border-border-default hover:border-brand-green/50 transition-colors">
-              <div className="w-12 h-12 rounded-lg bg-brand-green/10 text-brand-green flex items-center justify-center"><Send className="w-6 h-6" /></div>
-              <div>
-                <h4 className="font-semibold text-text-primary">WhatsApp Direto</h4>
-                <p className="text-sm text-text-secondary">Atendimento rápido para oração.</p>
-              </div>
-            </a>
-
-            <a href="mailto:contato@teleios.org.br" className="flex items-center gap-4 p-4 bg-tertiary rounded-xl border border-border-default hover:border-brand-blue/50 transition-colors">
-              <div className="w-12 h-12 rounded-lg bg-brand-blue/10 text-brand-blue flex items-center justify-center"><Mail className="w-6 h-6" /></div>
-              <div>
-                <h4 className="font-semibold text-text-primary">E-mail</h4>
-                <p className="text-sm text-text-secondary">contato@teleios.org.br</p>
-              </div>
-            </a>
-
-            <div className="flex items-center gap-4 p-4 bg-tertiary rounded-xl border border-border-default">
-              <div className="w-12 h-12 rounded-lg bg-brand-gold/10 text-brand-gold flex items-center justify-center"><MapPin className="w-6 h-6" /></div>
-              <div>
-                <h4 className="font-semibold text-text-primary">Endereço</h4>
-                <p className="text-sm text-text-secondary">Rua da Esperança, 123 — Centro</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="pt-4 border-t border-border-default">
-            <h4 className="font-semibold text-text-primary mb-3 flex items-center gap-2">
-              <Clock className="w-5 h-5 text-brand-gold" />
-              Horários
-            </h4>
-            <div className="grid grid-cols-2 gap-2 text-sm text-text-secondary">
-              <div><span className="font-medium text-text-primary">Seg–Sex:</span> 09h–18h</div>
-              <div><span className="font-medium text-text-primary">Domingos:</span> 09h30 / 19h</div>
-            </div>
+      {/* Form ultra-simplificado: Nome + Telefone -> Enviar */}
+      <form onSubmit={handleSubmit} className="max-w-lg mx-auto space-y-4">
+        <div>
+          <label className="block text-xs font-bold uppercase tracking-wider text-[#9CA3AF] mb-1.5">
+            Seu Nome Completo *
+          </label>
+          <div className="relative">
+            <User className="w-4 h-4 text-[#9CA3AF] absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              required
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Como podemos te chamar?"
+              className="w-full pl-10 pr-4 py-3.5 bg-[#1F2937] border border-[#374151] rounded-xl text-xs text-white placeholder-[#9CA3AF]/60 focus:outline-none focus:border-[#0077C8]"
+            />
           </div>
         </div>
+
+        <div>
+          <label className="block text-xs font-bold uppercase tracking-wider text-[#9CA3AF] mb-1.5">
+            Número de Telefone / WhatsApp *
+          </label>
+          <div className="relative">
+            <Phone className="w-4 h-4 text-[#9CA3AF] absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <input
+              type="tel"
+              required
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder="(11) 99999-9999"
+              className="w-full pl-10 pr-4 py-3.5 bg-[#1F2937] border border-[#374151] rounded-xl text-xs text-white placeholder-[#9CA3AF]/60 focus:outline-none focus:border-[#0077C8]"
+            />
+          </div>
+        </div>
+
+        <div className="pt-2">
+          <button
+            type="submit"
+            disabled={isSubmitting}
+            className="w-full py-4 bg-[#0077C8] hover:bg-[#005F9E] text-white rounded-xl text-xs font-bold uppercase tracking-wider transition shadow-xl flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+          >
+            {isSubmitting ? (
+              <>
+                <RefreshCw className="w-4 h-4 animate-spin" />
+                <span>Enviando Pedido...</span>
+              </>
+            ) : (
+              <>
+                <Send className="w-4 h-4" />
+                <span>Enviar Pedido de Oração</span>
+              </>
+            )}
+          </button>
+        </div>
+
+        <div className="flex items-center gap-2 text-[11px] text-[#9CA3AF] justify-center pt-1">
+          <ShieldCheck className="w-4 h-4 text-blue-400" />
+          <span>Seus dados são confidenciais e utilizados exclusivamente para intercessão.</span>
+        </div>
+      </form>
       </div>
     </section>
   );

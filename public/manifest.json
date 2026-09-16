@@ -78,26 +78,27 @@
       "label": "Página Inicial Mobile - Ministério Teleios"
     }
   ],
+  "id": "/",
   "shortcuts": [
+    {
+      "name": "Painel Administrativo",
+      "short_name": "Admin",
+      "description": "Gerenciamento de conteúdos e configurações",
+      "url": "/admin",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Conteúdos & Mídias",
+      "short_name": "Mídias",
+      "description": "Devocionais, vídeos e galeria",
+      "url": "/midias",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    },
     {
       "name": "Pedir Oração",
       "short_name": "Oração",
       "description": "Solicitar atendimento pastoral e oração",
-      "url": "/contato?tab=contato",
-      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
-    },
-    {
-      "name": "Estudos Bíblicos",
-      "short_name": "Estudos",
-      "description": "Acessar estudos e devocionais",
-      "url": "/midias?tab=estudos",
-      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
-    },
-    {
-      "name": "Projetos Sociais",
-      "short_name": "Projetos",
-      "description": "Conhecer ações sociais e voluntariado",
-      "url": "/projetos",
+      "url": "/#contato",
       "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
     }
   ],

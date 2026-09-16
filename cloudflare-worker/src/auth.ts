@@ -13,6 +13,8 @@ export type Bindings = {
   AGENT_COORDINATOR: DurableObjectNamespace;
   // Secret compartilhado com o Go Agent para autenticar conexão WebSocket
   AGENT_SECRET?: string;
+  GOOGLE_CLIENT_ID?: string;
+  GOOGLE_CLIENT_SECRET?: string;
 };
 
 export type WorkerToken = {
@@ -64,7 +66,7 @@ export const authMiddleware = async (c: Context<WorkerEnvironment>, next: () => 
   }
 
   const token = authHeader.split(' ')[1];
-  const decoded = await validateWorkerToken(token, c.env.JWT_SECRET || 'dev_secret');
+  const decoded = await validateWorkerToken(token, c.env.JWT_SECRET || 'change-me');
 
   if (!decoded) {
     return c.json({ success: false, error: 'Acesso negado: Token inválido ou expirado.' }, 401);

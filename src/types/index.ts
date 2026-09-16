@@ -14,11 +14,13 @@ export enum ContentCategory {
 export type PermissionModule =
   | 'ingest'
   | 'estudos'
+  | 'devocionais'
   | 'galeria'
   | 'videos'
   | 'projetos'
-  | 'queues'
   | 'whatsapp'
+  | 'integracoes'
+  | 'queues'
   | 'config'
   | 'code'
   | '*'; // Acesso total (Superadmin)
@@ -114,21 +116,35 @@ export interface Study {
   id: string;
   fileId: string;
   title?: string;
+  slug?: string;
   topic?: string;
+  type?: 'Devocional' | 'Estudo' | 'Mensagem' | 'Vídeo' | 'Outro' | string;
+  status?: 'RASCUNHO' | 'AGENDADO' | 'PUBLICADO' | 'ARQUIVADO';
+  published?: boolean;
   content?: string;
   rawContent: string;
   summary: string | null;
   aiImagePrompt: string | null;
   generatedImgUrl: string | null;
   aiImageUrl?: string | null;
+  videoUrl?: string | null;
   scheduledAt: string | null;
   sentToWhatsapp: boolean;
   sentAt: string | null;
   whatsappMessageId?: string | null;
   createdAt: string;
+  updatedAt?: string;
   mediaFile?: MediaFile;
   date?: string;
   driveWebViewLink?: string;
+}
+
+export interface BackupStatus {
+  lastBackupAt: string;
+  lastBackupKey: string;
+  sizeBytes: number;
+  totalItems: number;
+  success: boolean;
 }
 
 export interface VideoMetadata {
@@ -179,3 +195,83 @@ export interface SystemStatus {
     driveFolders?: number;
   };
 }
+
+export type ProjectLayoutModel = 'featured_grid' | 'timeline' | 'metrics_cards';
+
+export interface Devocional {
+  id: string;
+  title: string;
+  textContent: string;
+  imageUrl?: string | null;
+  audioUrl?: string | null;
+  audioName?: string | null;
+  documentUrl?: string | null;
+  channelId?: string | null;
+  channelName?: string | null;
+  targetPhone?: string | null;
+  scheduledDate: string; // YYYY-MM-DD
+  scheduledTime: string; // HH:mm
+  status: 'PENDENTE' | 'DISPARADO' | 'CANCELADO';
+  createdAt: string;
+}
+
+// ==========================================
+// LEADS & INSCRIÇÕES
+// ==========================================
+
+export type LeadType = 'pedido_oracao' | 'doacao';
+export type LeadStatus = 'PENDENTE' | 'ATENDIDO' | 'CONFIRMADO' | 'CANCELADO';
+
+export interface Lead {
+  id: string;
+  name: string;
+  phone: string;
+  type: LeadType;
+  status: LeadStatus;
+  amount?: number;
+  receiptFileId?: string | null;
+  receiptUrl?: string | null;
+  receiptProvided: boolean;
+  notes?: string | null;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+// ==========================================
+// CONFIGURAÇÕES & INTEGRAÇÕES
+// ==========================================
+
+export interface PixConfig {
+  key: string;
+  keyType: 'cpf' | 'cnpj' | 'email' | 'phone' | 'random';
+  receiverName: string;
+  receiverCity: string;
+  description?: string;
+}
+
+export interface GeminiConfig {
+  apiKey?: string;
+  apiKeyMasked?: string;
+  model: string;
+  configured: boolean;
+  lastTestedAt?: string | null;
+  status?: 'online' | 'offline' | 'error';
+}
+
+export interface GoogleDriveConfig {
+  serviceAccountEmail?: string;
+  privateKey?: string;
+  rootFolderId?: string;
+  rootFolderName?: string;
+  configured: boolean;
+  lastTestedAt?: string | null;
+  status?: 'online' | 'offline' | 'error';
+  lastError?: string | null;
+}
+
+export interface AppConfig {
+  pix: PixConfig;
+  gemini: GeminiConfig;
+  googleDrive: GoogleDriveConfig;
+}
+

@@ -1,5 +1,3 @@
-import { loadSession } from './security.service.ts';
-
 const productionApiUrl = 'https://teleios-api-worker.ca88321499.workers.dev';
 const configuredApiUrl = import.meta.env.VITE_API_BASE_URL;
 
@@ -12,14 +10,8 @@ export function apiUrl(path: string): string {
   return baseUrl ? `${baseUrl.replace(/\/$/, '')}${path}` : path;
 }
 
-/** Fetch helper that routes requests through the configured API gateway. */
+/** Fetch helper for public API requests. */
 export function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
-  const session = loadSession();
   const headers = new Headers(init.headers);
-
-  if (session?.token && !headers.has('Authorization')) {
-    headers.set('Authorization', `Bearer ${session.token}`);
-  }
-
   return fetch(apiUrl(path), { ...init, headers });
 }

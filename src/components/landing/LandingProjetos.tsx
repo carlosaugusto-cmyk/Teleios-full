@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import { Users } from 'lucide-react';
 
 export const LandingProjetos: React.FC = () => {
@@ -24,27 +24,30 @@ export const LandingProjetos: React.FC = () => {
   ];
 
   return (
-    <section id="projetos" className="py-16 space-y-12 scroll-mt-24">
-      <div className="text-center max-w-3xl mx-auto space-y-3">
-        <span className="text-sm font-bold uppercase tracking-widest text-brand-gold">Solidariedade & Amor</span>
-        <h2 className="text-4xl sm:text-5xl font-serif font-bold text-text-primary">
+    <section id="projetos" className="py-12 sm:py-16 space-y-10 scroll-mt-24">
+      <div className="text-center max-w-3xl mx-auto space-y-3 px-2">
+        <span className="text-xs font-bold uppercase tracking-widest text-[#F5A800]">Solidariedade & Amor</span>
+        <h2 className="text-3xl sm:text-4xl lg:text-5xl font-serif font-bold text-white">
           Projetos Sociais
         </h2>
-        <p className="text-base text-text-secondary">
+        <p className="text-sm sm:text-base text-[#9CA3AF]">
           A fé que transforma vidas se expressa em atos concretos de amor e cuidado ao próximo.
         </p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {socialProjects.map((proj) => (
-          <div key={proj.id} className="bg-secondary rounded-2xl border border-border-default p-8 shadow-sm hover:shadow-lg transition-all flex flex-col h-full text-center">
-            <div className="w-16 h-16 rounded-full bg-brand-gold/10 text-brand-gold flex items-center justify-center mx-auto mb-6">
-              <Users className="w-8 h-8" />
+          <div
+            key={proj.id}
+            className="bg-[#111827] rounded-2xl border border-[#374151] p-6 sm:p-8 shadow-sm hover:border-[#F5A800]/50 transition-all flex flex-col h-full text-center"
+          >
+            <div className="w-14 h-14 rounded-full bg-[#F5A800]/10 text-[#F5A800] flex items-center justify-center mx-auto mb-5">
+              <Users className="w-7 h-7" />
             </div>
-            <h3 className="font-serif font-bold text-2xl text-text-primary mb-4">{proj.title}</h3>
-            <p className="text-base text-text-secondary leading-relaxed flex-1">{proj.description}</p>
-            <div className="pt-6 mt-6 border-t border-border-default">
-              <span className="font-bold text-brand-green">{proj.impact}</span>
+            <h3 className="font-serif font-bold text-xl text-white mb-3">{proj.title}</h3>
+            <p className="text-xs sm:text-sm text-[#D1D5DB] leading-relaxed flex-1">{proj.description}</p>
+            <div className="pt-5 mt-5 border-t border-[#374151]">
+              <span className="font-bold text-xs uppercase tracking-wider text-[#10B981]">{proj.impact}</span>
             </div>
           </div>
         ))}

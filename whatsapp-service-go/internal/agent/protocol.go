@@ -1,8 +1,16 @@
 package agent
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"time"
 )
+
+// Helper para calcular hash SHA-256 (primeiros 10 caracteres) para rastreabilidade de ponta a ponta
+func HashQR(qr string) string {
+	h := sha256.Sum256([]byte(qr))
+	return hex.EncodeToString(h[:])[:10]
+}
 
 // Tipos base
 type WhatsAppStatus string
@@ -64,9 +72,11 @@ type StatusUpdateMsg struct {
 
 type QrUpdateMsg struct {
 	BaseMessage
-	AgentID   string `json:"agentId"`
-	QRCode    string `json:"qrCode"`
-	ExpiresAt string `json:"expiresAt"`
+	AgentID     string `json:"agentId"`
+	QRCode      string `json:"qrCode"`
+	QRVersion   int    `json:"qrVersion,omitempty"`
+	GeneratedAt string `json:"generatedAt,omitempty"`
+	ExpiresAt   string `json:"expiresAt"`
 }
 
 type SessionUpdateMsg struct {
@@ -90,6 +100,18 @@ type JobFailedMsg struct {
 	Error     string `json:"error"`
 	Attempt   int    `json:"attempt"`
 	Retryable bool   `json:"retryable"`
+}
+
+type ChannelDestination struct {
+	JID  string `json:"jid"`
+	Name string `json:"name"`
+	Type string `json:"type"`
+}
+
+type ChannelsUpdateMsg struct {
+	BaseMessage
+	AgentID  string               `json:"agentId"`
+	Channels []ChannelDestination `json:"channels"`
 }
 
 // ─── DO → Agent ──────────────────────────────────────────────────────────────

@@ -56,13 +56,16 @@ self.addEventListener('fetch', (event) => {
   // Skip chrome-extension and other non-http(s) requests
   if (!url.protocol.startsWith('http')) return;
 
+  // Nunca interceptar requisições de API (nem backend workers.dev, nem rotas /api/)
+  if (url.hostname.includes('workers.dev') || url.pathname.startsWith('/api/')) {
+    return;
+  }
+
   // Strategy based on request type
   if (isImageRequest(request)) {
     event.respondWith(cacheFirstStrategy(request, IMAGE_CACHE));
   } else if (isStaticAsset(request)) {
     event.respondWith(cacheFirstStrategy(request, STATIC_CACHE));
-  } else if (isAPIRequest(request)) {
-    event.respondWith(networkFirstStrategy(request, DYNAMIC_CACHE));
   } else {
     event.respondWith(staleWhileRevalidate(request, DYNAMIC_CACHE));
   }
@@ -107,7 +110,10 @@ async function networkFirstStrategy(request, cacheName) {
     }
     return new Response(JSON.stringify({ error: 'Offline', offline: true }), {
       status: 503,
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+      },
     });
   }
 }

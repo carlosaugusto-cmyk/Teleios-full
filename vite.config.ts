@@ -20,6 +20,7 @@ export default defineConfig(() => {
           background_color: '#0A0F1A',
           display: 'standalone',
           orientation: 'portrait-primary',
+          id: '/',
           scope: '/',
           start_url: '/',
           lang: 'pt-BR',
@@ -35,15 +36,15 @@ export default defineConfig(() => {
             { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' },
           ],
           shortcuts: [
-            { name: 'Pedir Oração', short_name: 'Oração', url: '/#contato' },
-            { name: 'Projetos Sociais', short_name: 'Projetos', url: '/#projetos' },
-            { name: 'Estudos Bíblicos', short_name: 'Estudos', url: '/#midias' },
+            { name: 'Devocionais Bíblicos', short_name: 'Devocionais', url: '/#devocionais', icons: [{ src: '/icons/icon-192.png', sizes: '192x192' }] },
+            { name: 'Conteúdos & Mídias', short_name: 'Mídias', url: '/#midias', icons: [{ src: '/icons/icon-192.png', sizes: '192x192' }] },
+            { name: 'Pedir Oração', short_name: 'Oração', url: '/#contato', icons: [{ src: '/icons/icon-192.png', sizes: '192x192' }] },
           ],
         },
         workbox: {
           globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
           navigateFallback: '/index.html',
-          navigateFallbackAllowlist: [/^\//, /^\/admin/],
+          navigateFallbackAllowlist: [/^(?!\/__).*/],
           runtimeCaching: [
             {
               urlPattern: /^https:\/\/images\.unsplash\.com\/.*/i,

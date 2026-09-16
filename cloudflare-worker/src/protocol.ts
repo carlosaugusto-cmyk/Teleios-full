@@ -29,6 +29,7 @@ export type JobStatus =
   | 'PROCESSING'
   | 'SENT'
   | 'FAILED'
+  | 'RETRYING'
   | 'CANCELLED';
 
 // ─── Envelope base ───────────────────────────────────────────────────────────
@@ -69,6 +70,8 @@ export interface QrUpdateMsg extends BaseMessage {
   type: 'QR_UPDATE';
   agentId: string;
   qrCode: string;      // string base do QR (para renderizar com qrcode.react)
+  qrVersion?: number;
+  generatedAt?: string;
   expiresAt: string;   // ISO8601
 }
 
@@ -95,6 +98,18 @@ export interface JobFailedMsg extends BaseMessage {
   retryable: boolean;
 }
 
+export interface ChannelItem {
+  jid: string;
+  name: string;
+  type: string;
+}
+
+export interface ChannelsUpdateMsg extends BaseMessage {
+  type: 'CHANNELS_UPDATE';
+  agentId: string;
+  channels: ChannelItem[];
+}
+
 export type AgentToDoMessage =
   | RegisterAgentMsg
   | HeartbeatMsg
@@ -102,7 +117,8 @@ export type AgentToDoMessage =
   | QrUpdateMsg
   | SessionUpdateMsg
   | JobAckMsg
-  | JobFailedMsg;
+  | JobFailedMsg
+  | ChannelsUpdateMsg;
 
 // ─── DO → Agent ──────────────────────────────────────────────────────────────
 
@@ -144,6 +160,19 @@ export interface SyncResponseMsg extends BaseMessage {
   pendingJobs: SendJobMsg[];
 }
 
+export interface RestartWaMsg extends BaseMessage {
+  type: 'RESTART_WA';
+}
+
+/** Enviado ao agent para iniciar primeira conexão/pareamento sem descartar sessão. */
+export interface ConnectWaMsg extends BaseMessage {
+  type: 'CONNECT_WA';
+}
+
+export interface SyncGroupsMsg extends BaseMessage {
+  type: 'SYNC_GROUPS';
+}
+
 export type DoToAgentMessage =
   | AgentAcceptedMsg
   | PingMsg
@@ -151,7 +180,11 @@ export type DoToAgentMessage =
   | CancelJobMsg
   | PauseMsg
   | ResumeMsg
+  | RestartWaMsg
+  | ConnectWaMsg
+  | SyncGroupsMsg
   | SyncResponseMsg;
+
 
 // ─── DO → Admin clients (broadcast) ─────────────────────────────────────────
 
@@ -162,12 +195,18 @@ export interface AdminStatusMsg extends BaseMessage {
   sessionStatus: SessionStatus;
   lastSeen: number;   // unix ms
   lastError?: string;
+  qrCode?: string | null;
+  qrExpiresAt?: string | null;
+  qrVersion?: number;
 }
 
 export interface AdminQrMsg extends BaseMessage {
   type: 'ADMIN_QR';
   qrCode: string;
   expiresAt: string;
+  qrVersion?: number;
+  qrHash?: string;
+  generatedAt?: string;
 }
 
 export interface AdminJobUpdateMsg extends BaseMessage {
