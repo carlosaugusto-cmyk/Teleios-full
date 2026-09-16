@@ -57,6 +57,8 @@ export async function register(data: RegisterData): Promise<TheleiosUser> {
     inDiscipleship: backendUser?.inDiscipleship ?? false,
     disciplerName: backendUser?.disciplerName ?? '',
     notes: backendUser?.notes ?? '',
+    role: backendUser?.role || 'user',
+    isAdmin: Boolean(backendUser?.isAdmin || backendUser?.role === 'admin'),
     registeredAt: backendUser?.createdAt || new Date().toISOString(),
   };
   setUser(user);
@@ -87,6 +89,8 @@ export async function loginWithPhone(phone: string): Promise<{ success: boolean;
     phone: profile.phone,
     church: profile.church || '',
     photoUrl: profile.photoUrl || null,
+    role: profile.role || (profile.isAdmin ? 'admin' : 'user'),
+    isAdmin: Boolean(profile.isAdmin || profile.role === 'admin' || profile.role === 'superadmin'),
     isBaptized: profile.isBaptized ?? false,
     timeAsBeliever: profile.timeAsBeliever ?? '',
     inDiscipleship: profile.inDiscipleship ?? false,

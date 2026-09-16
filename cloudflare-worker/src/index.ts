@@ -1770,6 +1770,8 @@ app.post('/api/app/profile', async (c) => {
     inDiscipleship: body.inDiscipleship !== undefined ? Boolean(body.inDiscipleship) : (userIdx >= 0 ? users[userIdx].inDiscipleship : false),
     disciplerName: body.disciplerName !== undefined ? String(body.disciplerName) : (userIdx >= 0 ? users[userIdx].disciplerName : ''),
     notes: userIdx >= 0 ? users[userIdx].notes : '',
+    role: userIdx >= 0 ? (users[userIdx].role || 'user') : (body.role || 'user'),
+    isAdmin: userIdx >= 0 ? Boolean(users[userIdx].isAdmin || users[userIdx].role === 'admin') : Boolean(body.isAdmin || body.role === 'admin'),
     currentDevocional: body.currentDevocional || (userIdx >= 0 ? users[userIdx].currentDevocional : null),
     currentEstudo: body.currentEstudo || (userIdx >= 0 ? users[userIdx].currentEstudo : null),
     lastActivityAt: now(),
@@ -1816,6 +1818,8 @@ app.get('/api/app/profile', async (c) => {
           phone: lead.phone,
           church: '',
           status: 'Ativo',
+          role: 'user',
+          isAdmin: false,
           createdAt: lead.createdAt || now(),
           updatedAt: lead.updatedAt || now(),
         };
@@ -1829,7 +1833,13 @@ app.get('/api/app/profile', async (c) => {
     return c.json({ success: false, error: 'Usuário não encontrado.' }, 404);
   }
 
-  return c.json({ success: true, data: user });
+  const enrichedUser = {
+    ...user,
+    role: user.role || (user.isAdmin ? 'admin' : 'user'),
+    isAdmin: Boolean(user.isAdmin || user.role === 'admin' || user.role === 'superadmin'),
+  };
+
+  return c.json({ success: true, data: enrichedUser });
 });
 
 // ADMIN: Listar usuários com resumo de atividade
@@ -1939,6 +1949,8 @@ app.put('/api/app/users/:id', authMiddleware, async (c) => {
       city: body.city || '',
       state: body.state || '',
       status: body.status || 'Ativo',
+      role: body.role || (body.isAdmin ? 'admin' : 'user'),
+      isAdmin: Boolean(body.isAdmin || body.role === 'admin'),
       isBaptized: Boolean(body.isBaptized),
       timeAsBeliever: body.timeAsBeliever || '',
       inDiscipleship: Boolean(body.inDiscipleship),
@@ -1958,6 +1970,8 @@ app.put('/api/app/users/:id', authMiddleware, async (c) => {
       city: body.city !== undefined ? body.city : appUsers[idx].city,
       state: body.state !== undefined ? body.state : appUsers[idx].state,
       status: body.status !== undefined ? body.status : appUsers[idx].status,
+      role: body.role !== undefined ? body.role : (body.isAdmin !== undefined ? (body.isAdmin ? 'admin' : 'user') : (appUsers[idx].role || 'user')),
+      isAdmin: body.isAdmin !== undefined ? Boolean(body.isAdmin) : (body.role !== undefined ? (body.role === 'admin') : Boolean(appUsers[idx].isAdmin || appUsers[idx].role === 'admin')),
       isBaptized: body.isBaptized !== undefined ? Boolean(body.isBaptized) : appUsers[idx].isBaptized,
       timeAsBeliever: body.timeAsBeliever !== undefined ? body.timeAsBeliever : appUsers[idx].timeAsBeliever,
       inDiscipleship: body.inDiscipleship !== undefined ? Boolean(body.inDiscipleship) : appUsers[idx].inDiscipleship,

@@ -29,6 +29,8 @@ export interface AppUserDetail {
   state?: string;
   photoUrl?: string | null;
   status: 'Ativo' | 'Inativo';
+  role?: 'admin' | 'user' | string;
+  isAdmin?: boolean;
   isBaptized?: boolean;
   timeAsBeliever?: string;
   inDiscipleship?: boolean;
@@ -62,6 +64,7 @@ export const UsuariosView: React.FC = () => {
   const [editCity, setEditCity] = useState('');
   const [editState, setEditState] = useState('');
   const [editStatus, setEditStatus] = useState<'Ativo' | 'Inativo'>('Ativo');
+  const [editRole, setEditRole] = useState<'admin' | 'user'>('user');
   const [editIsBaptized, setEditIsBaptized] = useState(false);
   const [editTimeAsBeliever, setEditTimeAsBeliever] = useState('');
   const [editInDiscipleship, setEditInDiscipleship] = useState(false);
@@ -103,6 +106,7 @@ export const UsuariosView: React.FC = () => {
     setEditCity(user.city || '');
     setEditState(user.state || '');
     setEditStatus(user.status || 'Ativo');
+    setEditRole((user.role === 'admin' || user.isAdmin) ? 'admin' : 'user');
     setEditIsBaptized(Boolean(user.isBaptized));
     setEditTimeAsBeliever(user.timeAsBeliever || '');
     setEditInDiscipleship(Boolean(user.inDiscipleship));
@@ -121,6 +125,9 @@ export const UsuariosView: React.FC = () => {
         });
         if (json.data.user) {
           setSelectedUser((prev) => ({ ...prev, ...json.data.user }));
+          if (json.data.user.role || json.data.user.isAdmin !== undefined) {
+            setEditRole((json.data.user.role === 'admin' || json.data.user.isAdmin) ? 'admin' : 'user');
+          }
         }
       }
     } catch {
@@ -145,6 +152,8 @@ export const UsuariosView: React.FC = () => {
           city: editCity.trim(),
           state: editState.trim(),
           status: editStatus,
+          role: editRole,
+          isAdmin: editRole === 'admin',
           isBaptized: editIsBaptized,
           timeAsBeliever: editTimeAsBeliever.trim(),
           inDiscipleship: editInDiscipleship,
@@ -271,15 +280,22 @@ export const UsuariosView: React.FC = () => {
                   <h3 className="font-semibold text-white text-base truncate group-hover:text-blue-400 transition-colors">
                     {user.name}
                   </h3>
-                  <span
-                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 ${
-                      user.status === 'Ativo'
-                        ? 'bg-emerald-950/80 text-emerald-300 border-emerald-800'
-                        : 'bg-gray-800 text-gray-400 border-gray-700'
-                    }`}
-                  >
-                    {user.status || 'Ativo'}
-                  </span>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {(user.role === 'admin' || user.isAdmin) && (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center gap-1">
+                        👑 Admin
+                      </span>
+                    )}
+                    <span
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                        user.status === 'Ativo'
+                          ? 'bg-emerald-950/80 text-emerald-300 border-emerald-800'
+                          : 'bg-gray-800 text-gray-400 border-gray-700'
+                      }`}
+                    >
+                      {user.status || 'Ativo'}
+                    </span>
+                  </div>
                 </div>
 
                 <p className="text-xs text-gray-400 truncate mt-0.5">
@@ -473,16 +489,41 @@ export const UsuariosView: React.FC = () => {
                         </div>
                       </div>
 
-                      <div>
-                        <label className="block text-[11px] text-gray-400 mb-1">Status da Conta</label>
-                        <select
-                          value={editStatus}
-                          onChange={(e) => setEditStatus(e.target.value as any)}
-                          className="w-full px-3 py-2 bg-[#1F2937] border border-[#374151] rounded-lg text-sm text-white focus:outline-none focus:border-blue-500"
-                        >
-                          <option value="Ativo">Ativo</option>
-                          <option value="Inativo">Inativo</option>
-                        </select>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-[11px] text-gray-400 mb-1">Status da Conta</label>
+                          <select
+                            value={editStatus}
+                            onChange={(e) => setEditStatus(e.target.value as any)}
+                            className="w-full px-3 py-2 bg-[#1F2937] border border-[#374151] rounded-lg text-sm text-white focus:outline-none focus:border-blue-500"
+                          >
+                            <option value="Ativo">Ativo</option>
+                            <option value="Inativo">Inativo</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] text-gray-400 mb-1 font-semibold flex items-center justify-between">
+                            <span>Função no App</span>
+                            {editRole === 'admin' && (
+                              <span className="text-[10px] text-amber-400 font-bold bg-amber-950/60 border border-amber-800 px-1.5 py-0.5 rounded">
+                                Upload Liberado
+                              </span>
+                            )}
+                          </label>
+                          <select
+                            value={editRole}
+                            onChange={(e) => setEditRole(e.target.value as any)}
+                            className={`w-full px-3 py-2 border rounded-lg text-sm text-white focus:outline-none font-medium ${
+                              editRole === 'admin'
+                                ? 'bg-amber-950/30 border-amber-500/60 text-amber-200 focus:border-amber-400'
+                                : 'bg-[#1F2937] border-[#374151] focus:border-blue-500'
+                            }`}
+                          >
+                            <option value="user">Membro Comum</option>
+                            <option value="admin">👑 Administrador (Upload no App)</option>
+                          </select>
+                        </div>
                       </div>
                     </div>
                   </div>

@@ -22,6 +22,7 @@ export type WorkerToken = {
   username: string;
   role: string;
   exp: number;
+  permissions?: string[];
 };
 
 export type WorkerEnvironment = {
@@ -61,6 +62,31 @@ async function sign(payload: string, secret: string): Promise<string> {
 
 export const authMiddleware = async (c: Context<WorkerEnvironment>, next: () => Promise<void>) => {
   const authHeader = c.req.header('Authorization');
+  const adminPhone = c.req.header('X-App-Admin-Phone');
+
+  // Permitir autenticação para usuários definidos como Admin no teleios:app_users
+  if (adminPhone && c.env.TELEIOS_KV) {
+    try {
+      const cleanPhone = adminPhone.replace(/\D/g, '');
+      const rawUsers = (await c.env.TELEIOS_KV.get('teleios:app_users', 'json')) as any[] | null;
+      const appUsers = rawUsers || [];
+      const foundUser = appUsers.find((u) => (u.phone || '').replace(/\D/g, '') === cleanPhone);
+      if (foundUser && (foundUser.role === 'admin' || foundUser.role === 'superadmin' || foundUser.isAdmin)) {
+        c.set('user', {
+          sub: foundUser.id,
+          username: foundUser.name,
+          role: 'admin',
+          exp: Math.floor(Date.now() / 1000) + 86400,
+          permissions: ['*'],
+        });
+        await next();
+        return;
+      }
+    } catch (err) {
+      console.error('[AuthMiddleware Admin Phone Check Error]', err);
+    }
+  }
+
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return c.json({ success: false, error: 'Acesso negado: Token não fornecido.' }, 401);
   }

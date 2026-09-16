@@ -76,6 +76,8 @@ export interface UserProfile {
   phone: string;
   church?: string;
   photoUrl?: string | null;
+  role?: 'admin' | 'user' | string;
+  isAdmin?: boolean;
   isBaptized?: boolean;
   timeAsBeliever?: string;
   inDiscipleship?: boolean;
@@ -288,3 +290,56 @@ export async function healthCheck(): Promise<boolean> {
     return false;
   }
 }
+
+/** Faz upload de documento ou imagem para o Worker com autorização de Admin */
+export async function uploadMediaFromApp(
+  file: File,
+  adminPhone: string,
+  category: 'DOCUMENTO' | 'GALERIA' = 'DOCUMENTO'
+): Promise<{ url: string; id: string; originalName: string; size: number; ext: string } | null> {
+  try {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('fileName', file.name);
+    formData.append('category', category);
+
+    const res = await fetch(`${BASE_URL}/api/upload`, {
+      method: 'POST',
+      headers: {
+        'X-App-Admin-Phone': adminPhone,
+      },
+      body: formData,
+    });
+
+    const json = await res.json();
+    if (json.success && json.mediaFile) {
+      const url = json.mediaFile.driveWebViewLink || (json.mediaFile.id ? `${BASE_URL}/api/media/${json.mediaFile.id}` : null);
+      const ext = file.name.split('.').pop()?.toLowerCase() || '';
+      return {
+        url: url || '',
+        id: json.mediaFile.id,
+        originalName: file.name,
+        size: file.size,
+        ext,
+      };
+    }
+    return null;
+  } catch (err) {
+    console.warn('[uploadMediaFromApp Error]', err);
+    return null;
+  }
+}
+
+/** Cria novo estudo ou devocional a partir do App com autorização de Admin */
+export async function createStudyFromApp(payload: any, adminPhone: string): Promise<ApiResponse<Study>> {
+  const res = await fetch(`${BASE_URL}/api/estudos`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-App-Admin-Phone': adminPhone,
+    },
+    body: JSON.stringify(payload),
+  });
+  return res.json() as Promise<ApiResponse<Study>>;
+}
+

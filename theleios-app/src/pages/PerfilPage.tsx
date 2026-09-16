@@ -11,6 +11,17 @@ import {
   Church,
   Clock,
   Sparkles,
+  UploadCloud,
+  FileText,
+  BookOpen,
+  GraduationCap,
+  CheckCircle2,
+  AlertCircle,
+  Calendar,
+  Download,
+  Loader2,
+  Image as ImageIcon,
+  Trash2,
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { getCurrentUser, isLoggedIn, logout, updateProfile } from '@/lib/auth';
@@ -20,11 +31,22 @@ import {
   fetchUserDonations,
   submitAppDonation,
   fetchConfigPublic,
+  fetchUserProfile,
+  uploadMediaFromApp,
+  createStudyFromApp,
   type PrayerItem,
   type DonationItem,
 } from '@/lib/api';
 import { generatePixPayload } from '@/lib/pixPayload';
-import { getPrayerRequests, getDonations, addPrayerRequest, addDonation, type TheleiosUser } from '@/lib/storage';
+import {
+  getPrayerRequests,
+  getDonations,
+  addPrayerRequest,
+  addDonation,
+  setUser as setUserStorage,
+  type TheleiosUser,
+} from '@/lib/storage';
+import { BIBLE_BOOKS, extractBibleReference } from '@/lib/bibleExtractor';
 import LoginModal from '@/components/LoginModal';
 
 export default function PerfilPage() {
@@ -68,6 +90,191 @@ export default function PerfilPage() {
   const [copiedPix, setCopiedPix] = useState(false);
   const [isGeneratingPix, setIsGeneratingPix] = useState(false);
   const [donationError, setDonationError] = useState<string | null>(null);
+
+  // ─── Sincronização em tempo real de permissões de Administrador ────────────
+  const [isAdminUser, setIsAdminUser] = useState(() => Boolean(user?.role === 'admin' || user?.isAdmin || user?.role === 'superadmin'));
+
+  useEffect(() => {
+    if (user?.phone) {
+      fetchUserProfile(user.phone).then((profile) => {
+        if (profile) {
+          const isAdm = Boolean(profile.isAdmin || profile.role === 'admin' || profile.role === 'superadmin');
+          setIsAdminUser(isAdm);
+          if (profile.role !== user.role || Boolean(user.isAdmin) !== isAdm) {
+            const updated: TheleiosUser = {
+              ...user,
+              role: profile.role || (isAdm ? 'admin' : 'user'),
+              isAdmin: isAdm,
+            };
+            setUser(updated);
+            setUserStorage(updated);
+          }
+        }
+      }).catch(() => {});
+    }
+  }, [user?.phone]);
+
+  // ─── Estado do Upload Rápido (Exclusivo para Administrador) ────────────────
+  const [showAdminUploadModal, setShowAdminUploadModal] = useState(false);
+  const [adminUploadTab, setAdminUploadTab] = useState<'devocionais' | 'estudos'>('devocionais');
+  const [adminDocFile, setAdminDocFile] = useState<File | null>(null);
+  const [adminTitle, setAdminTitle] = useState('');
+  const [adminContent, setAdminContent] = useState('');
+  const [adminBook, setAdminBook] = useState('');
+  const [adminChapter, setAdminChapter] = useState<number | ''>('');
+  const [adminDate, setAdminDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [adminCoverFile, setAdminCoverFile] = useState<File | null>(null);
+  const [adminCoverPreview, setAdminCoverPreview] = useState<string>('');
+  const [adminAutoDetected, setAdminAutoDetected] = useState<{ book: string; chapter: number } | null>(null);
+  const [isSubmittingAdminStudy, setIsSubmittingAdminStudy] = useState(false);
+  const [adminUploadFeedback, setAdminUploadFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  // Preview de capa selecionada
+  useEffect(() => {
+    if (adminCoverFile) {
+      const url = URL.createObjectURL(adminCoverFile);
+      setAdminCoverPreview(url);
+      return () => URL.revokeObjectURL(url);
+    } else {
+      setAdminCoverPreview('');
+    }
+  }, [adminCoverFile]);
+
+  // Detecção automática de referência bíblica para Estudos Bíblicos
+  useEffect(() => {
+    if (adminUploadTab === 'estudos' && showAdminUploadModal) {
+      const detected = extractBibleReference(`${adminTitle} ${adminContent}`);
+      if (detected) {
+        setAdminAutoDetected(detected);
+        if (!adminBook || adminAutoDetected?.book !== detected.book) {
+          setAdminBook(detected.book);
+        }
+        if (!adminChapter || adminAutoDetected?.chapter !== detected.chapter) {
+          setAdminChapter(detected.chapter);
+        }
+      } else {
+        setAdminAutoDetected(null);
+      }
+    }
+  }, [adminTitle, adminContent, adminUploadTab, showAdminUploadModal]);
+
+  const selectedAdminBookInfo = BIBLE_BOOKS.find((b) => b.name === adminBook);
+  const adminChapterOptions = selectedAdminBookInfo
+    ? Array.from({ length: selectedAdminBookInfo.chapters }, (_, i) => i + 1)
+    : [];
+
+  const handleQuickDocumentSelect = (file: File) => {
+    const ext = '.' + (file.name.split('.').pop()?.toLowerCase() || '');
+    if (!['.pdf', '.docx', '.doc'].includes(ext)) {
+      setAdminUploadFeedback({ type: 'error', message: 'Formato inválido. Selecione apenas arquivos DOC, DOCX ou PDF.' });
+      return;
+    }
+    const cleanTitle = file.name
+      .replace(/\.[^.]+$/, '')
+      .replace(/[_-]+/g, ' ')
+      .trim();
+
+    setAdminDocFile(file);
+    setAdminTitle(cleanTitle);
+    setAdminContent('');
+    setAdminBook('');
+    setAdminChapter('');
+    setAdminCoverFile(null);
+    setAdminCoverPreview('');
+    setAdminUploadFeedback(null);
+
+    if (adminUploadTab === 'estudos') {
+      const detected = extractBibleReference(cleanTitle);
+      if (detected) {
+        setAdminBook(detected.book);
+        setAdminChapter(detected.chapter);
+        setAdminAutoDetected(detected);
+      }
+    }
+
+    setShowAdminUploadModal(true);
+  };
+
+  const handleSubmitAdminStudy = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!adminDocFile) {
+      setAdminUploadFeedback({ type: 'error', message: 'Selecione um documento DOC, DOCX ou PDF.' });
+      return;
+    }
+    if (!adminTitle.trim()) {
+      setAdminUploadFeedback({ type: 'error', message: 'O título é obrigatório.' });
+      return;
+    }
+    if (adminUploadTab === 'estudos' && (!adminBook || !adminChapter)) {
+      setAdminUploadFeedback({ type: 'error', message: 'Para estudos bíblicos, selecione o livro e o capítulo.' });
+      return;
+    }
+
+    setIsSubmittingAdminStudy(true);
+    setAdminUploadFeedback(null);
+
+    try {
+      const phone = user?.phone || '';
+      // 1. Upload do documento via Worker
+      const uploadedDoc = await uploadMediaFromApp(adminDocFile, phone, 'DOCUMENTO');
+      if (!uploadedDoc) {
+        throw new Error('Falha no envio do documento para o servidor.');
+      }
+
+      // 2. Upload da imagem de capa (se houver)
+      let coverUrl: string | null = null;
+      if (adminCoverFile) {
+        const uploadedCover = await uploadMediaFromApp(adminCoverFile, phone, 'GALERIA');
+        if (uploadedCover) {
+          coverUrl = uploadedCover.url;
+        }
+      }
+
+      // 3. Montar payload do estudo/devocional
+      const studyType = adminUploadTab === 'devocionais' ? 'Devocional' : 'Estudo';
+      const topic = adminUploadTab === 'estudos' ? `${adminBook} ${adminChapter}` : 'Geral';
+      const contentText = adminContent.trim() || `Documento anexado: ${adminDocFile.name}`;
+
+      const payload = {
+        title: adminTitle.trim(),
+        type: studyType,
+        status: 'PUBLICADO',
+        published: true,
+        content: contentText,
+        rawContent: contentText,
+        summary: contentText.slice(0, 200),
+        topic,
+        documentUrl: uploadedDoc.url,
+        documentName: uploadedDoc.originalName,
+        documentType: uploadedDoc.ext,
+        documentSize: uploadedDoc.size,
+        generatedImgUrl: coverUrl,
+        scheduledAt: adminDate ? new Date(adminDate).toISOString() : new Date().toISOString(),
+      };
+
+      const res = await createStudyFromApp(payload, phone);
+      if (res.success) {
+        setAdminUploadFeedback({
+          type: 'success',
+          message: `${studyType} "${adminTitle.trim()}" publicado com sucesso!`,
+        });
+        setShowAdminUploadModal(false);
+        setAdminDocFile(null);
+        setAdminTitle('');
+        setAdminContent('');
+        setAdminBook('');
+        setAdminChapter('');
+        setAdminCoverFile(null);
+        setAdminCoverPreview('');
+      } else {
+        setAdminUploadFeedback({ type: 'error', message: res.error || 'Erro ao publicar item.' });
+      }
+    } catch (err: any) {
+      setAdminUploadFeedback({ type: 'error', message: err.message || 'Erro de conexão ao publicar.' });
+    } finally {
+      setIsSubmittingAdminStudy(false);
+    }
+  };
 
   // ─── Carregar orações e doações do usuário (sem loop de re-renderização) ────
   const userPhone = user?.phone;
@@ -387,9 +594,16 @@ export default function PerfilPage() {
               </div>
             )}
             <div className="min-w-0">
-              <h2 className="text-base font-bold text-[var(--color-text)] truncate">
-                {user?.name || name}
-              </h2>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <h2 className="text-base font-bold text-[var(--color-text)] truncate">
+                  {user?.name || name}
+                </h2>
+                {isAdminUser && (
+                  <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 uppercase shrink-0">
+                    👑 Admin
+                  </span>
+                )}
+              </div>
               <p className="text-xs text-[var(--color-text-muted)] truncate flex items-center gap-1.5 mt-0.5">
                 <Church size={13} className="shrink-0 text-[var(--color-primary-light)]" />
                 <span>{user?.church || church || 'Membro da Comunidade'}</span>
@@ -547,8 +761,11 @@ export default function PerfilPage() {
         )}
       </div>
 
-      {/* ─── 2. SEÇÃO: PEDIDOS DE ORAÇÃO ────────────────────────────────────── */}
-      <section className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-4 sm:p-5 shadow-sm space-y-4">
+      {/* ─── CONTEÚDO CONDICIONAL (MEMBRO COMUM vs ADMIN) ────────────────────── */}
+      {!isAdminUser ? (
+        <>
+          {/* ─── 2. SEÇÃO: PEDIDOS DE ORAÇÃO ────────────────────────────────────── */}
+          <section className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-4 sm:p-5 shadow-sm space-y-4">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <Heart size={18} className="text-rose-400" />
@@ -936,6 +1153,369 @@ export default function PerfilPage() {
             )}
           </div>
         </div>
+      )}
+        </>
+      ) : (
+        <>
+          {/* ─── FEEDBACK DE UPLOAD DO ADMIN ─────────────────────────────────── */}
+          {adminUploadFeedback && (
+            <div
+              className={`p-4 rounded-xl text-xs flex items-center justify-between gap-2 shadow-sm ${
+                adminUploadFeedback.type === 'success'
+                  ? 'bg-emerald-950/70 border border-emerald-800 text-emerald-300'
+                  : 'bg-rose-950/70 border border-rose-800 text-rose-300'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                {adminUploadFeedback.type === 'success' ? (
+                  <CheckCircle2 size={16} className="shrink-0 text-emerald-400" />
+                ) : (
+                  <AlertCircle size={16} className="shrink-0 text-rose-400" />
+                )}
+                <span>{adminUploadFeedback.message}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAdminUploadFeedback(null)}
+                className="p-1 hover:bg-white/10 rounded cursor-pointer text-gray-400 hover:text-white"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          )}
+
+          {/* ─── CARD UPLOAD RÁPIDO DE DOCUMENTOS (PDF / DOCX) ───────────────── */}
+          <div className="p-5 bg-gradient-to-br from-blue-950/40 via-[var(--color-surface)] to-[var(--color-surface)] border-2 border-dashed border-blue-500/50 hover:border-blue-400/80 rounded-2xl transition-all shadow-lg space-y-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-3.5 min-w-0">
+                <div className="w-12 h-12 rounded-xl bg-blue-500/20 border border-blue-500/30 flex items-center justify-center text-blue-400 shrink-0 shadow-inner">
+                  <UploadCloud className="w-6 h-6" />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="text-sm sm:text-base font-bold text-white tracking-tight">
+                      Upload Rápido de Documentos
+                    </h3>
+                    <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-blue-900/60 text-blue-300 border border-blue-600/40 uppercase">
+                      PDF • DOCX • DOC
+                    </span>
+                  </div>
+                  <p className="text-xs text-[var(--color-text-muted)] mt-1">
+                    Selecione um arquivo para publicar um novo Devocional ou Estudo Bíblico com preenchimento automático.
+                  </p>
+                </div>
+              </div>
+
+              <label className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-xs sm:text-sm font-semibold rounded-xl transition-all cursor-pointer shadow-md shrink-0">
+                <FileText className="w-4 h-4" />
+                <span>Selecionar Documento</span>
+                <input
+                  type="file"
+                  accept=".pdf,.docx,.doc,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      handleQuickDocumentSelect(file);
+                      e.target.value = '';
+                    }
+                  }}
+                  className="hidden"
+                />
+              </label>
+            </div>
+          </div>
+
+          {/* ─── MODAL: INFORMAÇÕES COMPLEMENTARES DO DOCUMENTO ──────────────── */}
+          {showAdminUploadModal && (
+            <div
+              className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/80 p-0 sm:p-4 backdrop-blur-sm"
+              onClick={() => !isSubmittingAdminStudy && setShowAdminUploadModal(false)}
+            >
+              <div
+                className="w-full max-w-lg bg-[var(--color-surface)] border border-[var(--color-border)] rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col"
+                style={{ paddingBottom: `calc(1rem + var(--safe-bottom))` }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                {/* Modal Header */}
+                <div className="flex items-center justify-between p-4 border-b border-[var(--color-border)] bg-[var(--color-surface-alt)]/50 shrink-0">
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-2 rounded-lg bg-blue-500/20 text-blue-400">
+                      <UploadCloud size={18} />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-bold text-white">Publicar Conteúdo</h3>
+                      <p className="text-[11px] text-[var(--color-text-muted)]">Informações complementares para publicação</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={isSubmittingAdminStudy}
+                    onClick={() => setShowAdminUploadModal(false)}
+                    className="p-1 rounded-lg text-[var(--color-text-muted)] hover:text-white hover:bg-[var(--color-surface-alt)] cursor-pointer"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+
+                {/* Modal Form */}
+                <form onSubmit={handleSubmitAdminStudy} className="p-4 sm:p-5 overflow-y-auto space-y-4 flex-1">
+                  {/* Tipo de Publicação */}
+                  <div>
+                    <label className="block text-xs font-bold text-[var(--color-text-muted)] uppercase tracking-wider mb-2">
+                      Tipo de Publicação
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setAdminUploadTab('devocionais')}
+                        className={`py-2.5 px-3 text-xs font-bold rounded-xl border flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                          adminUploadTab === 'devocionais'
+                            ? 'bg-blue-600 text-white border-blue-500 shadow-sm'
+                            : 'bg-[var(--color-surface-alt)] text-[var(--color-text-muted)] border-[var(--color-border)] hover:text-white'
+                        }`}
+                      >
+                        <BookOpen size={14} />
+                        <span>Devocional</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAdminUploadTab('estudos')}
+                        className={`py-2.5 px-3 text-xs font-bold rounded-xl border flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                          adminUploadTab === 'estudos'
+                            ? 'bg-blue-600 text-white border-blue-500 shadow-sm'
+                            : 'bg-[var(--color-surface-alt)] text-[var(--color-text-muted)] border-[var(--color-border)] hover:text-white'
+                        }`}
+                      >
+                        <GraduationCap size={14} />
+                        <span>Estudo Bíblico</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Documento Selecionado */}
+                  <div className="p-3 bg-[var(--color-surface-alt)] border border-[var(--color-border)] rounded-xl space-y-2">
+                    <label className="block text-xs font-bold text-[var(--color-text-muted)] uppercase tracking-wider">
+                      Documento Anexado
+                    </label>
+                    {adminDocFile ? (
+                      <div className="flex items-center justify-between p-2.5 bg-[var(--color-surface)] border border-blue-500/30 rounded-xl">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="w-9 h-9 rounded-lg bg-blue-900/40 border border-blue-500/40 flex items-center justify-center text-blue-300 shrink-0 font-bold text-[10px] uppercase">
+                            {adminDocFile.name.split('.').pop()}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-xs font-bold text-white truncate">{adminDocFile.name}</p>
+                            <p className="text-[10px] text-emerald-400 font-medium">
+                              {(adminDocFile.size / 1024 / 1024).toFixed(2)} MB • Pronto para upload
+                            </p>
+                          </div>
+                        </div>
+                        <label className="px-2.5 py-1 text-xs text-blue-400 hover:text-blue-300 hover:bg-blue-950/50 rounded-lg cursor-pointer font-semibold border border-blue-500/30 transition-colors">
+                          Trocar
+                          <input
+                            type="file"
+                            accept=".pdf,.docx,.doc,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                            onChange={(e) => {
+                              const f = e.target.files?.[0];
+                              if (f) handleQuickDocumentSelect(f);
+                            }}
+                            className="hidden"
+                          />
+                        </label>
+                      </div>
+                    ) : (
+                      <label className="flex items-center justify-center gap-2 p-4 border border-dashed border-blue-500/40 rounded-xl cursor-pointer hover:bg-blue-950/20 text-xs text-blue-400">
+                        <FileText size={16} />
+                        <span>Selecionar Documento (.pdf, .docx, .doc)</span>
+                        <input
+                          type="file"
+                          accept=".pdf,.docx,.doc,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                          onChange={(e) => {
+                            const f = e.target.files?.[0];
+                            if (f) handleQuickDocumentSelect(f);
+                          }}
+                          className="hidden"
+                        />
+                      </label>
+                    )}
+                  </div>
+
+                  {/* Título */}
+                  <div>
+                    <label className="block text-xs font-bold text-[var(--color-text-muted)] mb-1">
+                      Título da Publicação *
+                    </label>
+                    <input
+                      type="text"
+                      value={adminTitle}
+                      onChange={(e) => setAdminTitle(e.target.value)}
+                      placeholder="Ex: Vivendo pela Fé em Cristo"
+                      className="w-full px-3.5 py-2.5 bg-[var(--color-surface-alt)] border border-[var(--color-border)] rounded-xl text-sm text-white focus:outline-none focus:border-blue-500"
+                      required
+                    />
+                  </div>
+
+                  {/* Campos específicos de Estudo Bíblico: Livro e Capítulo */}
+                  {adminUploadTab === 'estudos' && (
+                    <div className="space-y-2 p-3 bg-blue-950/30 border border-blue-800/40 rounded-xl">
+                      {adminAutoDetected && (
+                        <div className="flex items-center gap-1.5 text-[11px] text-blue-300 font-medium">
+                          <Sparkles size={13} className="text-amber-400 shrink-0" />
+                          <span>
+                            Referência detectada automaticamente:{' '}
+                            <strong className="text-white">
+                              {adminAutoDetected.book} {adminAutoDetected.chapter}
+                            </strong>
+                          </span>
+                        </div>
+                      )}
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-bold text-[var(--color-text-muted)] mb-1">
+                            Livro da Bíblia *
+                          </label>
+                          <select
+                            value={adminBook}
+                            onChange={(e) => {
+                              setAdminBook(e.target.value);
+                              setAdminChapter('');
+                            }}
+                            className="w-full px-3 py-2 bg-[var(--color-surface-alt)] border border-[var(--color-border)] rounded-xl text-xs text-white focus:outline-none focus:border-blue-500"
+                            required
+                          >
+                            <option value="">Selecione...</option>
+                            {BIBLE_BOOKS.map((b) => (
+                              <option key={b.name} value={b.name}>
+                                {b.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold text-[var(--color-text-muted)] mb-1">
+                            Capítulo *
+                          </label>
+                          <select
+                            value={adminChapter}
+                            onChange={(e) => setAdminChapter(Number(e.target.value))}
+                            disabled={!adminBook}
+                            className="w-full px-3 py-2 bg-[var(--color-surface-alt)] border border-[var(--color-border)] rounded-xl text-xs text-white focus:outline-none focus:border-blue-500 disabled:opacity-50"
+                            required
+                          >
+                            <option value="">Capítulo...</option>
+                            {adminChapterOptions.map((ch) => (
+                              <option key={ch} value={ch}>
+                                Capítulo {ch}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Data de Publicação */}
+                  <div>
+                    <label className="block text-xs font-bold text-[var(--color-text-muted)] mb-1">
+                      Data de Publicação
+                    </label>
+                    <input
+                      type="date"
+                      value={adminDate}
+                      onChange={(e) => setAdminDate(e.target.value)}
+                      className="w-full px-3.5 py-2 bg-[var(--color-surface-alt)] border border-[var(--color-border)] rounded-xl text-xs text-white focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+
+                  {/* Mensagem / Resumo / Observação */}
+                  <div>
+                    <label className="block text-xs font-bold text-[var(--color-text-muted)] mb-1">
+                      Mensagem / Observação Complementar (Opcional)
+                    </label>
+                    <textarea
+                      rows={3}
+                      value={adminContent}
+                      onChange={(e) => setAdminContent(e.target.value)}
+                      placeholder="Adicione um resumo, reflexão pastoral ou observações para o leitor..."
+                      className="w-full px-3.5 py-2.5 bg-[var(--color-surface-alt)] border border-[var(--color-border)] rounded-xl text-xs text-white focus:outline-none focus:border-blue-500 leading-relaxed"
+                    />
+                  </div>
+
+                  {/* Imagem de Capa (Opcional) */}
+                  <div>
+                    <label className="block text-xs font-bold text-[var(--color-text-muted)] mb-1">
+                      Imagem de Capa (Opcional)
+                    </label>
+                    {adminCoverPreview ? (
+                      <div className="relative rounded-xl overflow-hidden border border-[var(--color-border)] max-h-36 flex items-center justify-center bg-black/40">
+                        <img
+                          src={adminCoverPreview}
+                          alt="Capa selecionada"
+                          className="w-full h-36 object-cover"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setAdminCoverFile(null);
+                            setAdminCoverPreview('');
+                          }}
+                          className="absolute top-2 right-2 p-1.5 bg-black/70 hover:bg-red-600 text-white rounded-lg transition-colors cursor-pointer"
+                          title="Remover capa"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    ) : (
+                      <label className="flex items-center justify-center gap-2 p-3 border border-dashed border-[var(--color-border)] rounded-xl cursor-pointer hover:border-blue-500/50 text-xs text-[var(--color-text-muted)] transition-colors">
+                        <ImageIcon size={16} />
+                        <span>Adicionar imagem de capa</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={(e) => {
+                            const img = e.target.files?.[0];
+                            if (img) setAdminCoverFile(img);
+                          }}
+                          className="hidden"
+                        />
+                      </label>
+                    )}
+                  </div>
+
+                  {/* Botões de Ação */}
+                  <div className="flex items-center justify-end gap-2 pt-3 border-t border-[var(--color-border)]">
+                    <button
+                      type="button"
+                      disabled={isSubmittingAdminStudy}
+                      onClick={() => setShowAdminUploadModal(false)}
+                      className="px-4 py-2 text-xs text-[var(--color-text-muted)] hover:text-white rounded-xl cursor-pointer transition-colors"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isSubmittingAdminStudy}
+                      className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-xl transition-all cursor-pointer shadow flex items-center gap-1.5"
+                    >
+                      {isSubmittingAdminStudy ? (
+                        <>
+                          <Loader2 size={14} className="animate-spin" />
+                          <span>Publicando...</span>
+                        </>
+                      ) : (
+                        <>
+                          <UploadCloud size={14} />
+                          <span>Salvar e Publicar</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

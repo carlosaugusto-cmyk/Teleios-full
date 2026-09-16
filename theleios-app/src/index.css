@@ -38,68 +38,162 @@ html, body {
 .docx-render-container {
   width: 100% !important;
   max-width: 100% !important;
-  box-sizing: border-box;
+  box-sizing: border-box !important;
+  overflow-x: hidden !important;
 }
 
 .docx-render-container .docx-wrapper {
   background: transparent !important;
   padding: 0 !important;
+  margin: 0 !important;
   width: 100% !important;
   max-width: 100% !important;
+  box-sizing: border-box !important;
 }
 
-.docx-render-container section.docx {
+/* Reset rígido para todas as variações de section/article geradas pelo docx-preview */
+.docx-render-container section,
+.docx-render-container section.docx,
+.docx-render-container section.docx-preview-rendered,
+.docx-render-container article {
   width: 100% !important;
   max-width: 100% !important;
   box-sizing: border-box !important;
   margin: 0 auto !important;
-  padding: 16px 12px !important;
+  padding: 16px 14px !important;
   box-shadow: none !important;
   border: none !important;
   border-radius: 0 !important;
+  min-height: auto !important;
+  overflow-x: hidden !important;
+}
+
+/* Conter imagens e contêineres de desenhos (evitar estouro horizontal) */
+.docx-render-container img,
+.docx-render-container svg,
+.docx-render-container picture,
+.docx-render-container canvas,
+.docx-render-container div[style*="width"],
+.docx-render-container .docx-drawing {
+  max-width: 100% !important;
+  height: auto !important;
+  box-sizing: border-box !important;
+  object-fit: contain !important;
+}
+
+.docx-render-container img {
+  display: block !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+
+/* Ajuste de parágrafos e tabelas do DOCX */
+.docx-render-container p {
+  max-width: 100% !important;
+  word-break: break-word !important;
+  overflow-wrap: break-word !important;
+  line-height: 1.7 !important;
+}
+
+.docx-render-container table {
+  width: 100% !important;
+  max-width: 100% !important;
+  table-layout: auto !important;
+  box-sizing: border-box !important;
 }
 
 @media (min-width: 768px) {
-  .docx-render-container section.docx {
+  .docx-render-container section,
+  .docx-render-container section.docx,
+  .docx-render-container section.docx-preview-rendered {
     max-width: 850px !important;
     padding: 36px 32px !important;
     border-radius: 12px !important;
   }
 }
 
-/* Modo Leitura Escuro para DOCX */
-.reading-theme-escuro .docx-render-container {
+/* ─── Modo Leitura Claro (Padrão nativo do documento) ─── */
+.reading-theme-claro .docx-render-container,
+.reading-theme-claro .docx-render-container section,
+.reading-theme-claro .docx-render-container article {
+  background-color: #ffffff !important;
+  color: #1e293b !important;
+}
+
+.reading-theme-claro .docx-render-container p,
+.reading-theme-claro .docx-render-container span,
+.reading-theme-claro .docx-render-container td,
+.reading-theme-claro .docx-render-container th,
+.reading-theme-claro .docx-render-container li,
+.reading-theme-claro .docx-render-container h1,
+.reading-theme-claro .docx-render-container h2,
+.reading-theme-claro .docx-render-container h3,
+.reading-theme-claro .docx-render-container h4,
+.reading-theme-claro .docx-render-container h5,
+.reading-theme-claro .docx-render-container h6 {
+  color: #1e293b !important;
+}
+
+/* ─── Modo Leitura Escuro para DOCX (Alto contraste suave) ─── */
+.reading-theme-escuro .docx-render-container,
+.reading-theme-escuro .docx-render-container .docx-wrapper,
+.reading-theme-escuro .docx-render-container section,
+.reading-theme-escuro .docx-render-container section.docx,
+.reading-theme-escuro .docx-render-container section.docx-preview-rendered,
+.reading-theme-escuro .docx-render-container article {
   background-color: #0f172a !important;
   color: #f1f5f9 !important;
-}
-.reading-theme-escuro .docx-render-container .docx-wrapper {
-  background-color: #0f172a !important;
-}
-.reading-theme-escuro .docx-render-container section.docx {
-  background-color: #1e293b !important;
-  color: #f1f5f9 !important;
-  border-color: #334155 !important;
-}
-.reading-theme-escuro .docx-render-container section.docx * {
-  color: inherit !important;
   border-color: #334155 !important;
 }
 
-/* Modo Leitura Sépia para DOCX */
-.reading-theme-sepia .docx-render-container {
-  background-color: #f4ebd9 !important;
-  color: #3b2c1a !important;
+.reading-theme-escuro .docx-render-container p,
+.reading-theme-escuro .docx-render-container span,
+.reading-theme-escuro .docx-render-container td,
+.reading-theme-escuro .docx-render-container th,
+.reading-theme-escuro .docx-render-container li,
+.reading-theme-escuro .docx-render-container h1,
+.reading-theme-escuro .docx-render-container h2,
+.reading-theme-escuro .docx-render-container h3,
+.reading-theme-escuro .docx-render-container h4,
+.reading-theme-escuro .docx-render-container h5,
+.reading-theme-escuro .docx-render-container h6 {
+  color: #f1f5f9 !important;
+  background-color: transparent !important;
 }
-.reading-theme-sepia .docx-render-container .docx-wrapper {
-  background-color: #f4ebd9 !important;
+
+.reading-theme-escuro .docx-render-container a {
+  color: #60a5fa !important;
 }
-.reading-theme-sepia .docx-render-container section.docx {
-  background-color: #fcf6ea !important;
+
+/* ─── Modo Leitura Sépia para DOCX (Conforto tipo livro) ─── */
+.reading-theme-sepia .docx-render-container,
+.reading-theme-sepia .docx-render-container .docx-wrapper,
+.reading-theme-sepia .docx-render-container section,
+.reading-theme-sepia .docx-render-container section.docx,
+.reading-theme-sepia .docx-render-container section.docx-preview-rendered,
+.reading-theme-sepia .docx-render-container article {
+  background-color: #f7f1e5 !important;
   color: #3b2c1a !important;
   border-color: #e5d8c3 !important;
 }
-.reading-theme-sepia .docx-render-container section.docx * {
-  color: inherit !important;
-  border-color: #e5d8c3 !important;
+
+.reading-theme-sepia .docx-render-container p,
+.reading-theme-sepia .docx-render-container span,
+.reading-theme-sepia .docx-render-container td,
+.reading-theme-sepia .docx-render-container th,
+.reading-theme-sepia .docx-render-container li,
+.reading-theme-sepia .docx-render-container h1,
+.reading-theme-sepia .docx-render-container h2,
+.reading-theme-sepia .docx-render-container h3,
+.reading-theme-sepia .docx-render-container h4,
+.reading-theme-sepia .docx-render-container h5,
+.reading-theme-sepia .docx-render-container h6 {
+  color: #3b2c1a !important;
+  background-color: transparent !important;
 }
+
+.reading-theme-sepia .docx-render-container a {
+  color: #854d0e !important;
+}
+
 

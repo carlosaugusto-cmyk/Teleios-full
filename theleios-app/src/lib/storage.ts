@@ -21,6 +21,8 @@ export interface TheleiosUser {
   phone: string;
   church: string;
   photoUrl?: string | null;
+  role?: 'admin' | 'user' | string;
+  isAdmin?: boolean;
   isBaptized?: boolean;
   timeAsBeliever?: string;
   inDiscipleship?: boolean;

@@ -56,7 +56,7 @@ export default function DocumentViewer({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [readingTheme, setReadingTheme] = useState<ReadingTheme>('escuro');
+  const [readingTheme, setReadingTheme] = useState<ReadingTheme>('claro');
 
   // Estados específicos para PDF
   const [currentPage, setCurrentPage] = useState(1);
@@ -92,6 +92,58 @@ export default function DocumentViewer({
             ignoreHeight: true,
             breakPages: false,
           });
+
+          // Pós-processamento do DOM renderizado para eliminar margens duras do Word e conter imagens
+          if (docxContainerRef.current) {
+            // 1. Reset de padding/margin das páginas/seções do Word
+            const sections = docxContainerRef.current.querySelectorAll('section, article');
+            sections.forEach((sec) => {
+              const el = sec as HTMLElement;
+              el.style.setProperty('padding-left', '14px', 'important');
+              el.style.setProperty('padding-right', '14px', 'important');
+              el.style.setProperty('margin-left', 'auto', 'important');
+              el.style.setProperty('margin-right', 'auto', 'important');
+              el.style.setProperty('width', '100%', 'important');
+              el.style.setProperty('max-width', '100%', 'important');
+              el.style.setProperty('box-sizing', 'border-box', 'important');
+              el.style.setProperty('overflow-x', 'hidden', 'important');
+            });
+
+            // 2. Conter imagens e contêineres de desenho (renderDrawing) para não estourar a tela
+            const mediaAndDrawings = docxContainerRef.current.querySelectorAll('img, svg, picture, canvas, .docx-drawing, div[style*="width"]');
+            mediaAndDrawings.forEach((elem) => {
+              const el = elem as HTMLElement;
+              el.style.setProperty('max-width', '100%', 'important');
+              el.style.setProperty('box-sizing', 'border-box', 'important');
+
+              if (el.tagName === 'IMG') {
+                el.style.setProperty('height', 'auto', 'important');
+                el.style.setProperty('display', 'block', 'important');
+                el.style.setProperty('margin-left', 'auto', 'important');
+                el.style.setProperty('margin-right', 'auto', 'important');
+                el.style.setProperty('object-fit', 'contain', 'important');
+              }
+
+              // Se tiver largura inline fixa maior que o viewport móvel, reajustar
+              if (el.style.width && el.style.width.includes('px')) {
+                const numericWidth = parseFloat(el.style.width);
+                if (numericWidth > 300) {
+                  el.style.setProperty('width', '100%', 'important');
+                  el.style.setProperty('height', 'auto', 'important');
+                }
+              }
+            });
+
+            // 3. Ajuste de parágrafos para evitar indentação excessiva no mobile
+            const paragraphs = docxContainerRef.current.querySelectorAll('p');
+            paragraphs.forEach((p) => {
+              const el = p as HTMLElement;
+              el.style.setProperty('max-width', '100%', 'important');
+              el.style.setProperty('overflow-wrap', 'break-word', 'important');
+              el.style.setProperty('word-break', 'break-word', 'important');
+            });
+          }
+
           setLoading(false);
         }
       } catch (err: any) {
