@@ -33,3 +33,73 @@ html, body {
   display: flex;
   flex-direction: column;
 }
+
+/* ─── Estilos Responsivos Edge-to-Edge para Visor de Documentos ─── */
+.docx-render-container {
+  width: 100% !important;
+  max-width: 100% !important;
+  box-sizing: border-box;
+}
+
+.docx-render-container .docx-wrapper {
+  background: transparent !important;
+  padding: 0 !important;
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+.docx-render-container section.docx {
+  width: 100% !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+  margin: 0 auto !important;
+  padding: 16px 12px !important;
+  box-shadow: none !important;
+  border: none !important;
+  border-radius: 0 !important;
+}
+
+@media (min-width: 768px) {
+  .docx-render-container section.docx {
+    max-width: 850px !important;
+    padding: 36px 32px !important;
+    border-radius: 12px !important;
+  }
+}
+
+/* Modo Leitura Escuro para DOCX */
+.reading-theme-escuro .docx-render-container {
+  background-color: #0f172a !important;
+  color: #f1f5f9 !important;
+}
+.reading-theme-escuro .docx-render-container .docx-wrapper {
+  background-color: #0f172a !important;
+}
+.reading-theme-escuro .docx-render-container section.docx {
+  background-color: #1e293b !important;
+  color: #f1f5f9 !important;
+  border-color: #334155 !important;
+}
+.reading-theme-escuro .docx-render-container section.docx * {
+  color: inherit !important;
+  border-color: #334155 !important;
+}
+
+/* Modo Leitura Sépia para DOCX */
+.reading-theme-sepia .docx-render-container {
+  background-color: #f4ebd9 !important;
+  color: #3b2c1a !important;
+}
+.reading-theme-sepia .docx-render-container .docx-wrapper {
+  background-color: #f4ebd9 !important;
+}
+.reading-theme-sepia .docx-render-container section.docx {
+  background-color: #fcf6ea !important;
+  color: #3b2c1a !important;
+  border-color: #e5d8c3 !important;
+}
+.reading-theme-sepia .docx-render-container section.docx * {
+  color: inherit !important;
+  border-color: #e5d8c3 !important;
+}
+

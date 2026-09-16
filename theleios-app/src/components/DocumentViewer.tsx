@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import {
   FileText,
   Download,
@@ -12,9 +12,14 @@ import {
   AlertCircle,
   RefreshCw,
   File,
+  Sun,
+  Moon,
+  BookOpen,
 } from 'lucide-react';
 import { renderAsync } from 'docx-preview';
 import { resolveDocumentUrl } from '../lib/api';
+
+type ReadingTheme = 'escuro' | 'sepia' | 'claro';
 
 interface DocumentViewerProps {
   documentUrl: string;
@@ -51,6 +56,7 @@ export default function DocumentViewer({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [readingTheme, setReadingTheme] = useState<ReadingTheme>('escuro');
 
   // Estados específicos para PDF
   const [currentPage, setCurrentPage] = useState(1);
@@ -63,7 +69,7 @@ export default function DocumentViewer({
   const pdfCanvasRef = useRef<HTMLCanvasElement>(null);
   const containerWrapperRef = useRef<HTMLDivElement>(null);
 
-  // ─── 1. RENDERIZADOR DE DOCX (docx-preview) ──────────────────────────────────
+  // ─── 1. RENDERIZADOR DE DOCX (docx-preview com Edge-to-Edge) ────────────────
   useEffect(() => {
     if (detectedType !== 'docx') return;
 
@@ -81,10 +87,10 @@ export default function DocumentViewer({
           docxContainerRef.current.innerHTML = '';
           await renderAsync(buffer, docxContainerRef.current, undefined, {
             className: 'docx-preview-rendered',
-            inWrapper: true,
-            ignoreWidth: false,
-            ignoreHeight: false,
-            breakPages: true,
+            inWrapper: false,
+            ignoreWidth: true,
+            ignoreHeight: true,
+            breakPages: false,
           });
           setLoading(false);
         }
@@ -153,7 +159,6 @@ export default function DocumentViewer({
       } catch (err: any) {
         console.warn('[PDF.js Canvas Error - Ativando Google Docs Fallback]', err);
         if (isMounted) {
-          // Se falhar o carregamento do worker/canvas, ativa Google Docs Viewer fallback
           setUseIframeFallback(true);
           setLoading(false);
         }
@@ -167,54 +172,66 @@ export default function DocumentViewer({
     };
   }, [fullDocUrl, detectedType]);
 
-  // Renderizar página atual do PDF no Canvas
-  useEffect(() => {
+  // Renderizar página atual do PDF no Canvas com Auto-Fit Edge-to-Edge
+  const renderPdfPage = useCallback(async () => {
     if (!pdfDoc || detectedType !== 'pdf' || useIframeFallback) return;
 
-    let cancelRender = false;
+    try {
+      const page = await pdfDoc.getPage(currentPage);
+      const canvas = pdfCanvasRef.current;
+      if (!canvas) return;
 
-    const renderPage = async () => {
-      try {
-        const page = await pdfDoc.getPage(currentPage);
-        if (cancelRender) return;
+      const context = canvas.getContext('2d');
+      if (!context) return;
 
-        const canvas = pdfCanvasRef.current;
-        if (!canvas) return;
+      const viewport = page.getViewport({ scale: 1 });
+      const containerWidth = containerWrapperRef.current?.clientWidth || window.innerWidth;
+      // Preenche 100% da largura da tela no mobile para leitura sem aperto
+      const availableWidth = Math.max(containerWidth, 320);
+      const fitScale = (availableWidth / viewport.width) * scale;
+      const finalViewport = page.getViewport({ scale: fitScale });
 
-        const context = canvas.getContext('2d');
-        if (!context) return;
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = Math.floor(finalViewport.width * dpr);
+      canvas.height = Math.floor(finalViewport.height * dpr);
+      canvas.style.width = `${Math.floor(finalViewport.width)}px`;
+      canvas.style.height = `${Math.floor(finalViewport.height)}px`;
 
-        // Otimização para telas Retina/Mobile
-        const dpr = window.devicePixelRatio || 1;
-        const viewport = page.getViewport({ scale: scale * 1.3 });
+      context.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-        canvas.width = Math.floor(viewport.width * dpr);
-        canvas.height = Math.floor(viewport.height * dpr);
-        canvas.style.width = `${Math.floor(viewport.width)}px`;
-        canvas.style.height = `${Math.floor(viewport.height)}px`;
+      const renderContext = {
+        canvasContext: context,
+        viewport: finalViewport,
+      };
 
-        context.setTransform(dpr, 0, 0, dpr, 0, 0);
-
-        const renderContext = {
-          canvasContext: context,
-          viewport,
-        };
-
-        await page.render(renderContext).promise;
-      } catch (err) {
-        console.warn('[PDF Page Render Warning]', err);
-      }
-    };
-
-    renderPage();
-
-    return () => {
-      cancelRender = true;
-    };
+      await page.render(renderContext).promise;
+    } catch (err) {
+      console.warn('[PDF Page Render Warning]', err);
+    }
   }, [pdfDoc, currentPage, scale, detectedType, useIframeFallback]);
 
-  const handleZoomIn = () => setScale((s) => Math.min(s + 0.2, 2.5));
-  const handleZoomOut = () => setScale((s) => Math.max(s - 0.2, 0.6));
+  useEffect(() => {
+    renderPdfPage();
+  }, [renderPdfPage]);
+
+  // Re-ajustar PDF ao redimensionar a tela/girar celular
+  useEffect(() => {
+    let resizeTimer: any;
+    const handleResize = () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        renderPdfPage();
+      }, 150);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      clearTimeout(resizeTimer);
+    };
+  }, [renderPdfPage]);
+
+  const handleZoomIn = () => setScale((s) => Math.min(s + 0.2, 3));
+  const handleZoomOut = () => setScale((s) => Math.max(s - 0.2, 0.5));
   const handleResetZoom = () => setScale(1);
 
   const toggleFullscreen = () => {
@@ -226,125 +243,188 @@ export default function DocumentViewer({
   return (
     <div
       ref={containerWrapperRef}
-      className={`flex flex-col bg-[#0F172A] border border-[var(--color-border)] rounded-2xl overflow-hidden shadow-2xl transition-all ${
-        isFullscreen ? 'fixed inset-0 z-50 rounded-none border-none' : 'w-full my-3'
+      className={`flex flex-col w-full overflow-hidden transition-all ${
+        isFullscreen
+          ? 'fixed inset-0 z-50 rounded-none border-none'
+          : 'rounded-none border-none m-0 p-0'
       }`}
-      style={{ minHeight: isFullscreen ? '100dvh' : '480px' }}
+      style={{ minHeight: isFullscreen ? '100dvh' : 'calc(100dvh - 120px)' }}
     >
       {/* Barra de Ferramentas / Header do Visor */}
-      <div className="flex flex-wrap items-center justify-between gap-2 px-3 sm:px-4 py-2.5 bg-[#1E293B] border-b border-gray-700/60 text-gray-200 select-none">
-        {/* Lado Esquerdo: Ícone e Nome */}
-        <div className="flex items-center gap-2.5 min-w-0 max-w-[50%]">
-          <div className="w-8 h-8 rounded-lg bg-blue-600/20 border border-blue-500/40 text-blue-400 flex items-center justify-center shrink-0">
-            {detectedType === 'pdf' ? <FileText size={16} /> : <File size={16} />}
+      <div className="bg-[#1E293B] border-b border-gray-700/60 text-gray-200 select-none">
+        {/* Linha 1: Título e Ações Principais */}
+        <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-gray-700/40">
+          <div className="flex items-center gap-2 min-w-0 max-w-[65%]">
+            <div className="w-7 h-7 rounded-lg bg-blue-600/20 border border-blue-500/40 text-blue-400 flex items-center justify-center shrink-0">
+              {detectedType === 'pdf' ? <FileText size={15} /> : <File size={15} />}
+            </div>
+            <div className="min-w-0">
+              <span className="block font-semibold text-xs sm:text-sm text-white truncate" title={displayName}>
+                {displayName}
+              </span>
+              <span className="text-[10px] text-gray-400 font-mono uppercase">
+                {detectedType.toUpperCase()}
+                {documentSize ? ` • ${(documentSize / 1024 / 1024).toFixed(1)} MB` : ''}
+              </span>
+            </div>
           </div>
-          <div className="min-w-0">
-            <span className="block font-semibold text-xs sm:text-sm text-white truncate" title={displayName}>
-              {displayName}
-            </span>
-            <span className="text-[10px] text-gray-400 font-mono uppercase">
-              {detectedType.toUpperCase()}
-              {documentSize ? ` • ${(documentSize / 1024 / 1024).toFixed(1)} MB` : ''}
-            </span>
+
+          <div className="flex items-center gap-1 sm:gap-2">
+            {/* Tela cheia */}
+            <button
+              type="button"
+              onClick={toggleFullscreen}
+              className="p-1.5 bg-[#0F172A] border border-gray-700 rounded-lg text-gray-300 hover:text-white transition-colors cursor-pointer"
+              title={isFullscreen ? 'Sair da tela cheia' : 'Visualizar em tela cheia'}
+            >
+              {isFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+            </button>
+
+            {/* Download / Abrir Original */}
+            <a
+              href={fullDocUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              download={displayName}
+              className="px-2.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors flex items-center gap-1 text-xs font-semibold"
+              title="Baixar ou abrir documento original"
+            >
+              <Download size={13} />
+              <span className="hidden sm:inline">Baixar</span>
+            </a>
           </div>
         </div>
 
-        {/* Lado Direito: Ações e Controles */}
-        <div className="flex items-center gap-1 sm:gap-2">
-          {/* Navegação de Página para PDF */}
-          {detectedType === 'pdf' && !useIframeFallback && numPages > 1 && (
-            <div className="flex items-center gap-1 px-1.5 py-0.5 bg-[#0F172A] border border-gray-700 rounded-lg text-xs">
+        {/* Linha 2: Controles de Leitura (Modo Escuro / Sépia / Claro, Zoom e Paginação) */}
+        <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-1.5 bg-[#162032] text-xs">
+          {/* Seletor de Modo de Leitura */}
+          <div className="flex items-center gap-1">
+            <span className="text-[10px] text-gray-400 uppercase font-semibold mr-1 hidden sm:inline">Leitura:</span>
+            <div className="inline-flex rounded-lg bg-[#0F172A] border border-gray-700 p-0.5">
               <button
                 type="button"
-                onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
-                disabled={currentPage <= 1}
-                className="p-1 text-gray-300 hover:text-white disabled:opacity-30 cursor-pointer"
-                title="Página anterior"
+                onClick={() => setReadingTheme('claro')}
+                className={`flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium transition-colors cursor-pointer ${
+                  readingTheme === 'claro'
+                    ? 'bg-amber-400 text-gray-950 font-bold shadow-sm'
+                    : 'text-gray-400 hover:text-white'
+                }`}
+                title="Modo Claro (Página branca original)"
               >
-                <ChevronLeft size={14} />
+                <Sun size={12} />
+                <span>Claro</span>
               </button>
-              <span className="font-mono text-[11px] px-1 text-gray-300">
-                {currentPage}/{numPages}
-              </span>
               <button
                 type="button"
-                onClick={() => setCurrentPage((p) => Math.min(p + 1, numPages))}
-                disabled={currentPage >= numPages}
-                className="p-1 text-gray-300 hover:text-white disabled:opacity-30 cursor-pointer"
-                title="Próxima página"
+                onClick={() => setReadingTheme('sepia')}
+                className={`flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium transition-colors cursor-pointer ${
+                  readingTheme === 'sepia'
+                    ? 'bg-[#E4D1B5] text-[#362712] font-bold shadow-sm'
+                    : 'text-gray-400 hover:text-white'
+                }`}
+                title="Modo Sépia (Conforto visual tipo livro)"
               >
-                <ChevronRight size={14} />
+                <BookOpen size={12} />
+                <span>Sépia</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setReadingTheme('escuro')}
+                className={`flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium transition-colors cursor-pointer ${
+                  readingTheme === 'escuro'
+                    ? 'bg-indigo-600 text-white font-bold shadow-sm'
+                    : 'text-gray-400 hover:text-white'
+                }`}
+                title="Modo Escuro (Fundo escuro, alto contraste para descanso visual)"
+              >
+                <Moon size={12} />
+                <span>Escuro</span>
               </button>
             </div>
-          )}
-
-          {/* Controles de Zoom */}
-          <div className="flex items-center gap-0.5 bg-[#0F172A] border border-gray-700 rounded-lg p-0.5">
-            <button
-              type="button"
-              onClick={handleZoomOut}
-              className="p-1.5 rounded hover:bg-gray-800 text-gray-300 hover:text-white transition-colors cursor-pointer"
-              title="Reduzir zoom"
-            >
-              <ZoomOut size={14} />
-            </button>
-            <button
-              type="button"
-              onClick={handleResetZoom}
-              className="px-1.5 py-0.5 text-[11px] font-mono text-gray-300 hover:text-white transition-colors cursor-pointer"
-              title="Restaurar zoom"
-            >
-              {Math.round(scale * 100)}%
-            </button>
-            <button
-              type="button"
-              onClick={handleZoomIn}
-              className="p-1.5 rounded hover:bg-gray-800 text-gray-300 hover:text-white transition-colors cursor-pointer"
-              title="Aumentar zoom"
-            >
-              <ZoomIn size={14} />
-            </button>
           </div>
 
-          {/* Tela cheia */}
-          <button
-            type="button"
-            onClick={toggleFullscreen}
-            className="p-1.5 bg-[#0F172A] border border-gray-700 rounded-lg text-gray-300 hover:text-white transition-colors cursor-pointer hidden sm:block"
-            title={isFullscreen ? 'Sair da tela cheia' : 'Visualizar em tela cheia'}
-          >
-            {isFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
-          </button>
+          {/* Controles de Zoom e Alternador Docs */}
+          <div className="flex items-center gap-1.5 ml-auto">
+            {/* Navegação de Página para PDF */}
+            {detectedType === 'pdf' && !useIframeFallback && numPages > 1 && (
+              <div className="flex items-center gap-0.5 px-1 py-0.5 bg-[#0F172A] border border-gray-700 rounded-lg text-xs">
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
+                  disabled={currentPage <= 1}
+                  className="p-1 text-gray-300 hover:text-white disabled:opacity-30 cursor-pointer"
+                  title="Página anterior"
+                >
+                  <ChevronLeft size={13} />
+                </button>
+                <span className="font-mono text-[11px] px-1 text-gray-300">
+                  {currentPage}/{numPages}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((p) => Math.min(p + 1, numPages))}
+                  disabled={currentPage >= numPages}
+                  className="p-1 text-gray-300 hover:text-white disabled:opacity-30 cursor-pointer"
+                  title="Próxima página"
+                >
+                  <ChevronRight size={13} />
+                </button>
+              </div>
+            )}
 
-          {/* Alternador de Modo para PDF (Canvas vs Google Docs Viewer) */}
-          {detectedType === 'pdf' && (
-            <button
-              type="button"
-              onClick={() => setUseIframeFallback((prev) => !prev)}
-              className="px-2 py-1 bg-[#0F172A] border border-gray-700 hover:border-gray-500 rounded-lg text-gray-300 hover:text-white text-[11px] font-medium transition-colors cursor-pointer"
-              title={useIframeFallback ? 'Alternar para Leitor Canvas Nativo' : 'Alternar para Leitor Google Docs'}
-            >
-              {useIframeFallback ? 'Modo Canvas' : 'Modo Docs'}
-            </button>
-          )}
+            {/* Controles de Zoom */}
+            <div className="flex items-center gap-0.5 bg-[#0F172A] border border-gray-700 rounded-lg p-0.5">
+              <button
+                type="button"
+                onClick={handleZoomOut}
+                className="p-1 rounded hover:bg-gray-800 text-gray-300 hover:text-white transition-colors cursor-pointer"
+                title="Reduzir zoom"
+              >
+                <ZoomOut size={13} />
+              </button>
+              <button
+                type="button"
+                onClick={handleResetZoom}
+                className="px-1.5 py-0.5 text-[11px] font-mono text-gray-300 hover:text-white transition-colors cursor-pointer"
+                title="Ajustar à largura da tela (100%)"
+              >
+                {Math.round(scale * 100)}%
+              </button>
+              <button
+                type="button"
+                onClick={handleZoomIn}
+                className="p-1 rounded hover:bg-gray-800 text-gray-300 hover:text-white transition-colors cursor-pointer"
+                title="Aumentar zoom"
+              >
+                <ZoomIn size={13} />
+              </button>
+            </div>
 
-          {/* Download / Abrir Original */}
-          <a
-            href={fullDocUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            download={displayName}
-            className="p-1.5 bg-blue-600/80 hover:bg-blue-600 text-white rounded-lg transition-colors flex items-center gap-1 text-xs font-semibold"
-            title="Baixar ou abrir documento original"
-          >
-            <Download size={14} />
-            <span className="hidden md:inline">Baixar</span>
-          </a>
+            {/* Alternador de Leitor para PDF */}
+            {detectedType === 'pdf' && (
+              <button
+                type="button"
+                onClick={() => setUseIframeFallback((prev) => !prev)}
+                className="px-2 py-1 bg-[#0F172A] border border-gray-700 hover:border-gray-500 rounded-lg text-gray-300 hover:text-white text-[10px] sm:text-[11px] font-medium transition-colors cursor-pointer"
+                title={useIframeFallback ? 'Alternar para Leitor Canvas Nativo' : 'Alternar para Leitor Google Docs'}
+              >
+                {useIframeFallback ? 'Canvas' : 'Docs'}
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Área Central de Visualização */}
-      <div className="flex-1 relative overflow-auto bg-[#0A0F1A] flex items-center justify-center p-2 sm:p-4">
+      {/* Área Central de Visualização (Sem margem lateral, 100% da tela) */}
+      <div
+        className={`flex-1 relative overflow-auto flex items-center justify-center p-0 transition-colors ${
+          readingTheme === 'escuro'
+            ? 'bg-[#090D16]'
+            : readingTheme === 'sepia'
+            ? 'bg-[#EFE5D3]'
+            : 'bg-[#E2E8F0]'
+        } reading-theme-${readingTheme}`}
+      >
         {/* Loading Spinner */}
         {loading && (
           <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-[#0A0F1A]/80 backdrop-blur-xs gap-3">
@@ -355,7 +435,7 @@ export default function DocumentViewer({
 
         {/* Mensagem de Erro com Ação */}
         {error && (
-          <div className="p-6 text-center max-w-md bg-[#1E293B] border border-red-500/40 rounded-2xl space-y-3">
+          <div className="m-4 p-6 text-center max-w-md bg-[#1E293B] border border-red-500/40 rounded-2xl space-y-3">
             <AlertCircle className="w-10 h-10 text-red-400 mx-auto" />
             <p className="text-sm font-semibold text-white">Falha ao abrir documento no visor integrado</p>
             <p className="text-xs text-gray-400">{error}</p>
@@ -382,36 +462,60 @@ export default function DocumentViewer({
           </div>
         )}
 
-        {/* ─── Render DOCX ─── */}
+        {/* ─── Render DOCX Edge-to-Edge ─── */}
         {detectedType === 'docx' && !error && (
           <div
-            className="w-full h-full overflow-auto flex justify-center"
+            className="w-full h-full overflow-auto flex justify-center p-0"
             style={{ transform: `scale(${scale})`, transformOrigin: 'top center', transition: 'transform 0.15s ease-out' }}
           >
             <div
               ref={docxContainerRef}
-              className="docx-render-container w-full max-w-3xl bg-white text-gray-900 rounded-xl shadow-lg p-6 sm:p-10 font-serif leading-relaxed text-sm min-h-full"
+              className={`docx-render-container w-full font-serif leading-relaxed text-sm min-h-full ${
+                readingTheme === 'escuro'
+                  ? 'bg-[#0f172a] text-[#f1f5f9]'
+                  : readingTheme === 'sepia'
+                  ? 'bg-[#fcf6ea] text-[#3b2c1a]'
+                  : 'bg-white text-gray-900'
+              }`}
             />
           </div>
         )}
 
-        {/* ─── Render PDF (Canvas ou Fallback Iframe) ─── */}
+        {/* ─── Render PDF (Canvas ou Fallback Iframe) Edge-to-Edge ─── */}
         {detectedType === 'pdf' && !error && (
           <>
             {useIframeFallback ? (
               <iframe
                 src={`https://docs.google.com/viewer?url=${encodeURIComponent(fullDocUrl)}&embedded=true`}
                 title={displayName}
-                className="w-full h-full border-none rounded-lg bg-white"
-                style={{ minHeight: isFullscreen ? 'calc(100dvh - 60px)' : '520px' }}
+                className="w-full h-full border-none"
+                style={{
+                  minHeight: isFullscreen ? 'calc(100dvh - 85px)' : 'calc(100dvh - 170px)',
+                  filter:
+                    readingTheme === 'escuro'
+                      ? 'invert(0.92) hue-rotate(180deg) brightness(0.95)'
+                      : readingTheme === 'sepia'
+                      ? 'sepia(0.35) contrast(0.95) brightness(0.96)'
+                      : 'none',
+                }}
               />
             ) : (
               <div
-                className="w-full h-full overflow-auto flex justify-center items-start"
+                className="w-full h-full overflow-auto flex justify-center items-start p-0"
                 style={{ transition: 'transform 0.15s ease-out' }}
               >
-                <div className="bg-white rounded-lg shadow-2xl overflow-hidden border border-gray-700/60 my-auto">
-                  <canvas ref={pdfCanvasRef} className="block mx-auto max-w-full h-auto" />
+                <div
+                  className="w-full shadow-none overflow-hidden my-auto flex justify-center"
+                  style={{
+                    filter:
+                      readingTheme === 'escuro'
+                        ? 'invert(0.92) hue-rotate(180deg) brightness(0.95)'
+                        : readingTheme === 'sepia'
+                        ? 'sepia(0.4) contrast(0.95) brightness(0.96)'
+                        : 'none',
+                  }}
+                >
+                  <canvas ref={pdfCanvasRef} className="block mx-auto max-w-none" />
                 </div>
               </div>
             )}
@@ -420,7 +524,7 @@ export default function DocumentViewer({
 
         {/* ─── Render DOC Legado ─── */}
         {detectedType === 'doc' && (
-          <div className="p-8 text-center max-w-md bg-[#1E293B] border border-[#374151] rounded-2xl space-y-4">
+          <div className="m-4 p-8 text-center max-w-md bg-[#1E293B] border border-[#374151] rounded-2xl space-y-4">
             <div className="w-14 h-14 rounded-2xl bg-blue-950/70 border border-blue-700/40 text-blue-400 flex items-center justify-center mx-auto">
               <File size={28} />
             </div>

@@ -110,10 +110,14 @@ function ConteudoPage() {
         </div>
       )}
 
-      <article className="flex-1 px-4 py-5">
-        <h1 className="text-xl font-bold text-[var(--color-text)] mb-3">{study.title}</h1>
-        {study.topic && (
-          <p className="text-xs text-[var(--color-primary-light)] mb-4 uppercase tracking-wider">{study.topic}</p>
+      <article className={`flex-1 ${study.documentUrl && activeTab === 'documento' ? 'p-0 w-full' : 'px-4 py-5'}`}>
+        {(!study.documentUrl || activeTab === 'texto') && (
+          <>
+            <h1 className="text-xl font-bold text-[var(--color-text)] mb-3">{study.title}</h1>
+            {study.topic && (
+              <p className="text-xs text-[var(--color-primary-light)] mb-4 uppercase tracking-wider">{study.topic}</p>
+            )}
+          </>
         )}
 
         {study.documentUrl && activeTab === 'documento' ? (
