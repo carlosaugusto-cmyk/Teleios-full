@@ -211,55 +211,60 @@ async function bootstrap(env: Bindings) {
     });
   }
 
-  const currentStudies = await getJson<Study[]>(env.TELEIOS_KV, KEY.studies, []);
-  if (!currentStudies || currentStudies.length === 0) {
-    await putJson(env.TELEIOS_KV, KEY.studies, [
-      {
-        id: 'study-devocional-0309',
-        fileId: 'file-devocional-0309',
-        title: 'DEVOCIONAL 03/09 (QUINTA-FEIRA) - TEMA: Não ofereça fogo estranho',
-        type: 'Devocional',
-        status: 'PUBLICADO',
-        published: true,
-        rawContent: 'DEVOCIONAL 03/09 (QUINTA-FEIRA) - TEMA: Não ofereça fogo estranho\n\nTexto bíblico: Levítico 10:1-2\n\nNa caminhada cristã, devemos nos achegar a Deus com reverência e obediência à Sua Palavra. Nadabe e Abiú ofereceram fogo estranho diante do Senhor, o que Ele não lhes havia ordenado. O verdadeiro culto é aquele oferecido em espírito e em verdade, alinhado à vontade soberana de Deus e movido pelo Espírito Santo. Não ofereça fogo estranho em suas decisões, orações e adoração; busque a pureza do altar do Senhor.',
-        content: 'DEVOCIONAL 03/09 (QUINTA-FEIRA) - TEMA: Não ofereça fogo estranho\n\nTexto bíblico: Levítico 10:1-2\n\nNa caminhada cristã, devemos nos achegar a Deus com reverência e obediência à Sua Palavra. Nadabe e Abiú ofereceram fogo estranho diante do Senhor, o que Ele não lhes havia ordenado. O verdadeiro culto é aquele oferecido em espírito e em verdade, alinhado à vontade soberana de Deus e movido pelo Espírito Santo. Não ofereça fogo estranho em suas decisões, orações e adoração; busque a pureza do altar do Senhor.',
-        summary: 'Devocional sobre adoração sincera e reverência a Deus: não ofereça fogo estranho diante do Senhor, mas busque a santidade e a verdade da Palavra.',
-        topic: 'Santidade & Reverência',
-        aiImagePrompt: null,
-        generatedImgUrl: 'https://images.unsplash.com/photo-1544717305-2782549b5136?auto=format&fit=crop&w=1000&q=80',
-        aiImageUrl: 'https://images.unsplash.com/photo-1544717305-2782549b5136?auto=format&fit=crop&w=1000&q=80',
-        scheduledAt: null,
-        sentToWhatsapp: false,
-        sentAt: null,
-        createdAt: now(),
-        updatedAt: now(),
-      },
-      {
-        id: 'study-01',
-        fileId: 'file-estudo-01',
-        title: 'Maturidade Cristã (Efésios 4:13)',
-        type: 'Estudo',
-        status: 'PUBLICADO',
-        published: true,
-        rawContent: 'Estudo bíblico sobre o chamado à maturidade cristã baseado em Efésios 4:13. O apóstolo Paulo nos exorta a crescermos até que todos alcancemos a medida da estatura da plenitude de Cristo.',
-        content: 'Estudo bíblico sobre o chamado à maturidade cristã baseado em Efésios 4:13. O apóstolo Paulo nos exorta a crescermos até que todos alcancemos a medida da estatura da plenitude de Cristo.',
-        summary: 'A maturidade cristã não é um destino, mas uma jornada contínua de transformação pelo poder da Palavra.',
-        topic: 'Discipulado',
-        aiImagePrompt: null,
-        generatedImgUrl: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80',
-        aiImageUrl: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80',
-        scheduledAt: null,
-        sentToWhatsapp: true,
-        sentAt: now(),
-        createdAt: now(),
-        updatedAt: now(),
-      },
-    ]);
+  const seededStudies = await env.TELEIOS_KV.get('teleios:seeded_initial_studies');
+  if (!seededStudies) {
+    const currentStudies = await getJson<Study[]>(env.TELEIOS_KV, KEY.studies, []);
+    if (!currentStudies || currentStudies.length === 0) {
+      await putJson(env.TELEIOS_KV, KEY.studies, [
+        {
+          id: 'study-devocional-0309',
+          fileId: 'file-devocional-0309',
+          title: 'DEVOCIONAL 03/09 (QUINTA-FEIRA) - TEMA: Não ofereça fogo estranho',
+          type: 'Devocional',
+          status: 'PUBLICADO',
+          published: true,
+          rawContent: 'DEVOCIONAL 03/09 (QUINTA-FEIRA) - TEMA: Não ofereça fogo estranho\n\nTexto bíblico: Levítico 10:1-2\n\nNa caminhada cristã, devemos nos achegar a Deus com reverência e obediência à Sua Palavra. Nadabe e Abiú ofereceram fogo estranho diante do Senhor, o que Ele não lhes havia ordenado. O verdadeiro culto é aquele oferecido em espírito e em verdade, alinhado à vontade soberana de Deus e movido pelo Espírito Santo. Não ofereça fogo estranho em suas decisões, orações e adoração; busque a pureza do altar do Senhor.',
+          content: 'DEVOCIONAL 03/09 (QUINTA-FEIRA) - TEMA: Não ofereça fogo estranho\n\nTexto bíblico: Levítico 10:1-2\n\nNa caminhada cristã, devemos nos achegar a Deus com reverência e obediência à Sua Palavra. Nadabe e Abiú ofereceram fogo estranho diante do Senhor, o que Ele não lhes havia ordenado. O verdadeiro culto é aquele oferecido em espírito e em verdade, alinhado à vontade soberana de Deus e movido pelo Espírito Santo. Não ofereça fogo estranho em suas decisões, orações e adoração; busque a pureza do altar do Senhor.',
+          summary: 'Devocional sobre adoração sincera e reverência a Deus: não ofereça fogo estranho diante do Senhor, mas busque a santidade e a verdade da Palavra.',
+          topic: 'Santidade & Reverência',
+          aiImagePrompt: null,
+          generatedImgUrl: 'https://images.unsplash.com/photo-1544717305-2782549b5136?auto=format&fit=crop&w=1000&q=80',
+          aiImageUrl: 'https://images.unsplash.com/photo-1544717305-2782549b5136?auto=format&fit=crop&w=1000&q=80',
+          scheduledAt: null,
+          sentToWhatsapp: false,
+          sentAt: null,
+          createdAt: now(),
+          updatedAt: now(),
+        },
+        {
+          id: 'study-01',
+          fileId: 'file-estudo-01',
+          title: 'Maturidade Cristã (Efésios 4:13)',
+          type: 'Estudo',
+          status: 'PUBLICADO',
+          published: true,
+          rawContent: 'Estudo bíblico sobre o chamado à maturidade cristã baseado em Efésios 4:13. O apóstolo Paulo nos exorta a crescermos até que todos alcancemos a medida da estatura da plenitude de Cristo.',
+          content: 'Estudo bíblico sobre o chamado à maturidade cristã baseado em Efésios 4:13. O apóstolo Paulo nos exorta a crescermos até que todos alcancemos a medida da estatura da plenitude de Cristo.',
+          summary: 'A maturidade cristã não é um destino, mas uma jornada contínua de transformação pelo poder da Palavra.',
+          topic: 'Discipulado',
+          aiImagePrompt: null,
+          generatedImgUrl: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80',
+          aiImageUrl: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80',
+          scheduledAt: null,
+          sentToWhatsapp: true,
+          sentAt: now(),
+          createdAt: now(),
+          updatedAt: now(),
+        },
+      ]);
+    }
+    await env.TELEIOS_KV.put('teleios:seeded_initial_studies', 'true');
   }
 
   // Auto-migração e cura de documentos em estudos salvos no KV
   try {
     const allFiles = await getJson<MediaFile[]>(env.TELEIOS_KV, KEY.files, []);
+    const currentStudies = await getJson<Study[]>(env.TELEIOS_KV, KEY.studies, []);
     if (allFiles && allFiles.length > 0 && currentStudies && currentStudies.length > 0) {
       let modified = false;
       const healedStudies = currentStudies.map((s: any) => {
@@ -355,20 +360,40 @@ app.get('/api/auth/me', authMiddleware, async (c) => {
 app.get('/api/estudos', async (c) => {
   await bootstrap(c.env);
   const showAll = c.req.query('all') === 'true';
-  const [studiesRaw, filesRaw, videosRaw] = await Promise.all([
+  const [studiesRaw, filesRaw, videosRaw, deletedIdsRaw] = await Promise.all([
     getJson<Study[]>(c.env.TELEIOS_KV!, KEY.studies, []),
     getJson<MediaFile[]>(c.env.TELEIOS_KV!, KEY.files, []),
     showAll ? getJson<any[]>(c.env.TELEIOS_KV!, KEY.videos, []) : Promise.resolve([]),
+    getJson<string[]>(c.env.TELEIOS_KV!, 'teleios:deleted_ids', []),
   ]);
-  const studies = Array.isArray(studiesRaw) ? studiesRaw : [];
-  const files = Array.isArray(filesRaw) ? filesRaw : [];
-  const videos = Array.isArray(videosRaw) ? videosRaw : [];
+  const deletedSet = new Set(Array.isArray(deletedIdsRaw) ? deletedIdsRaw : []);
+  const studies = (Array.isArray(studiesRaw) ? studiesRaw : []).filter(
+    (s) => !deletedSet.has(s.id) && (!s.fileId || !deletedSet.has(s.fileId))
+  );
+  const files = (Array.isArray(filesRaw) ? filesRaw : []).filter((f) => !deletedSet.has(f.id));
+  const videos = (Array.isArray(videosRaw) ? videosRaw : []).filter(
+    (v) => !deletedSet.has(v.id) && (!v.fileId || !deletedSet.has(v.fileId))
+  );
+
+  const nowIso = now();
+  let studiesModified = false;
+  studies.forEach((s) => {
+    if ((s.status === 'AGENDADO' || !s.published) && s.scheduledAt && s.scheduledAt <= nowIso) {
+      s.status = 'PUBLICADO';
+      s.published = true;
+      studiesModified = true;
+    }
+  });
+  if (studiesModified) {
+    putJson(c.env.TELEIOS_KV!, KEY.studies, studies).catch(() => {});
+  }
 
   let data = studies.map((rawS) => {
     const s = enrichStudyWithDocument(rawS, files);
     const file = files.find((f) => f.id === s.fileId) || files.find((f) => f.originalName === s.documentName);
-    const status = s.status || (s.published === false ? 'RASCUNHO' : 'PUBLICADO');
-    const isPublished = status === 'PUBLICADO' || s.published === true;
+    const isFuture = Boolean(s.scheduledAt && s.scheduledAt > nowIso);
+    const status = isFuture ? 'AGENDADO' : (s.status || (s.published === false ? 'RASCUNHO' : 'PUBLICADO'));
+    const isPublished = isFuture ? false : (status === 'PUBLICADO' || s.published === true);
 
     // Para a listagem em lote, otimizar payload evitando trafegar megabytes de binários
     const rawContentStr = typeof s.rawContent === 'string' ? s.rawContent : '';
@@ -413,22 +438,26 @@ app.get('/api/estudos', async (c) => {
 
   if (showAll && files.length > 0) {
     const existingFileIds = new Set<string>();
-    studies.forEach((s) => { if (s.fileId) existingFileIds.add(s.fileId); });
-    videos.forEach((v) => { if (v.fileId) existingFileIds.add(v.fileId); });
+    studies.forEach((s) => {
+      if (s.fileId) existingFileIds.add(s.fileId);
+      if (s.id) existingFileIds.add(s.id);
+    });
+    videos.forEach((v) => {
+      if (v.fileId) existingFileIds.add(v.fileId);
+      if (v.id) existingFileIds.add(v.id);
+    });
 
-    const standaloneFiles = files.filter((f) => !existingFileIds.has(f.id));
+    // Apenas documentos avulsos (NÃO fotos da galeria ou mídias soltas)
+    const standaloneFiles = files.filter(
+      (f) =>
+        !existingFileIds.has(f.id) &&
+        !deletedSet.has(f.id) &&
+        (f.category === 'DOCUMENTO' || f.category === 'ESTUDO' || f.category === 'DEVOCIONAL' || /\.(pdf|docx?)$/i.test(f.originalName || ''))
+    );
     const fileItems = standaloneFiles.map((f) => {
-      const isImg =
-        !f.category ||
-        f.category === 'GALERIA' ||
-        f.category === 'IMAGEM' ||
-        f.mimeType?.startsWith('image/') ||
-        /\.(jpe?g|png|gif|webp|svg|bmp|avif)$/i.test(f.originalName || '');
-      const isAud = f.mimeType?.startsWith('audio/') || f.category === 'APOIO';
       const ext = (f.originalName || '').split('.').pop()?.toLowerCase() || '';
       const isDoc = f.category === 'DOCUMENTO' || ext === 'pdf' || ext === 'docx' || ext === 'doc';
-      const type = isImg ? 'Imagem' : isAud ? 'Áudio' : isDoc ? 'Documento' : (f.category === 'PROJETO' ? 'Documento' : 'Estudo');
-      const imgUrl = isImg ? (f.driveWebViewLink || (f.r2Key ? `/api/media/${f.id}` : (f.id ? `/api/media/${f.id}` : ''))) : null;
+      const type = isDoc ? 'Documento' : (f.category === 'PROJETO' ? 'Documento' : 'Estudo');
       const docUrl = isDoc ? (f.driveWebViewLink || (f.r2Key ? `/api/media/${f.id}` : (f.id ? `/api/media/${f.id}` : null))) : null;
 
       return {
@@ -440,9 +469,9 @@ app.get('/api/estudos', async (c) => {
         published: true,
         rawContent: f.originalName || '',
         content: f.originalName || '',
-        summary: isImg ? 'Foto / Imagem enviada' : `Arquivo enviado (${(f.size ? (f.size / 1024).toFixed(1) + ' KB' : '')})`,
-        generatedImgUrl: imgUrl,
-        aiImageUrl: imgUrl,
+        summary: `Arquivo anexado (${(f.size ? (f.size / 1024).toFixed(1) + ' KB' : '')})`,
+        generatedImgUrl: null,
+        aiImageUrl: null,
         documentUrl: docUrl,
         documentName: f.originalName,
         documentType: ext === 'pdf' ? 'pdf' : (ext === 'docx' ? 'docx' : (ext === 'doc' ? 'doc' : 'documento')),
@@ -460,8 +489,8 @@ app.get('/api/estudos', async (c) => {
   }
 
   if (!showAll) {
-    const nowIso = now();
     data = data.filter((s: any) => {
+      if (s.scheduledAt && s.scheduledAt > nowIso) return false;
       if (s.status === 'PUBLICADO' || s.published === true) return true;
       if (s.status === 'AGENDADO' && s.scheduledAt && s.scheduledAt <= nowIso) return true;
       return false;
@@ -475,12 +504,20 @@ app.get('/api/estudos', async (c) => {
 app.get('/api/estudos/:id', async (c) => {
   await bootstrap(c.env);
   const idParam = c.req.param('id');
-  const [studiesRaw, filesRaw] = await Promise.all([
+  const [studiesRaw, filesRaw, deletedIdsRaw] = await Promise.all([
     getJson<Study[]>(c.env.TELEIOS_KV!, KEY.studies, []),
     getJson<MediaFile[]>(c.env.TELEIOS_KV!, KEY.files, []),
+    getJson<string[]>(c.env.TELEIOS_KV!, 'teleios:deleted_ids', []),
   ]);
-  const studies = Array.isArray(studiesRaw) ? studiesRaw : [];
-  const files = Array.isArray(filesRaw) ? filesRaw : [];
+  const deletedSet = new Set(Array.isArray(deletedIdsRaw) ? deletedIdsRaw : []);
+  if (deletedSet.has(idParam)) {
+    return c.json({ success: false, error: 'Conteúdo não encontrado.' }, 404);
+  }
+
+  const studies = (Array.isArray(studiesRaw) ? studiesRaw : []).filter(
+    (item) => !deletedSet.has(item.id) && (!item.fileId || !deletedSet.has(item.fileId))
+  );
+  const files = (Array.isArray(filesRaw) ? filesRaw : []).filter((f) => !deletedSet.has(f.id));
 
   let s = studies.find((item) => item.id === idParam || item.slug === idParam);
   if (s) {
@@ -592,8 +629,10 @@ app.post('/api/estudos', authMiddleware, requirePermission('estudos'), async (c)
     return c.json({ success: false, error: 'Título é obrigatório.' }, 400);
   }
 
-  const status = body.status || 'PUBLICADO';
-  const isPublished = status === 'PUBLICADO' || Boolean(body.scheduledAt && body.scheduledAt <= now());
+  const nowIso = now();
+  const isFutureScheduled = Boolean(body.scheduledAt && body.scheduledAt > nowIso);
+  const status = isFutureScheduled ? 'AGENDADO' : (body.status || 'PUBLICADO');
+  const isPublished = isFutureScheduled ? false : (status === 'PUBLICADO');
   const studyId = id('study');
 
   const newStudy: Study = {
@@ -681,15 +720,19 @@ app.put('/api/estudos/:id', authMiddleware, requirePermission('estudos'), async 
   }
 
   const existing = studies[idx];
-  const newStatus = body.status || existing.status || (existing.published ? 'PUBLICADO' : 'RASCUNHO');
-  const isPublished = newStatus === 'PUBLICADO';
+  const nowIso = now();
+  const scheduledAt = body.scheduledAt !== undefined ? body.scheduledAt : existing.scheduledAt;
+  const isFutureScheduled = Boolean(scheduledAt && scheduledAt > nowIso);
+  const newStatus = isFutureScheduled ? 'AGENDADO' : (body.status || existing.status || 'PUBLICADO');
+  const isPublished = isFutureScheduled ? false : (newStatus === 'PUBLICADO');
 
   const updated: Study = {
     ...existing,
     ...body,
+    scheduledAt,
     status: newStatus,
     published: isPublished,
-    updatedAt: now(),
+    updatedAt: nowIso,
   };
 
   studies[idx] = updated;
@@ -711,53 +754,70 @@ app.put('/api/estudos/:id', authMiddleware, requirePermission('estudos'), async 
 app.delete('/api/estudos/:id', authMiddleware, requirePermission('estudos'), async (c) => {
   await bootstrap(c.env);
   const studyId = c.req.param('id');
-  const studies = await getJson<Study[]>(c.env.TELEIOS_KV!, KEY.studies, []);
+  const [studiesRaw, filesRaw, videosRaw, deletedIdsRaw] = await Promise.all([
+    getJson<Study[]>(c.env.TELEIOS_KV!, KEY.studies, []),
+    getJson<MediaFile[]>(c.env.TELEIOS_KV!, KEY.files, []),
+    getJson<any[]>(c.env.TELEIOS_KV!, KEY.videos, []),
+    getJson<string[]>(c.env.TELEIOS_KV!, 'teleios:deleted_ids', []),
+  ]);
+
+  const studies = Array.isArray(studiesRaw) ? studiesRaw : [];
+  const files = Array.isArray(filesRaw) ? filesRaw : [];
+  const videos = Array.isArray(videosRaw) ? videosRaw : [];
+  const deletedSet = new Set(Array.isArray(deletedIdsRaw) ? deletedIdsRaw : []);
+
+  const toDeleteIds = new Set<string>();
+  if (studyId) toDeleteIds.add(studyId);
   const studyToDelete = studies.find((s) => s.id === studyId);
-  if (!studyToDelete) {
-    const videos = await getJson<any[]>(c.env.TELEIOS_KV!, KEY.videos, []);
-    const filteredVideos = videos.filter((v) => v.id !== studyId);
-    if (filteredVideos.length < videos.length) {
-      await putJson(c.env.TELEIOS_KV!, KEY.videos, filteredVideos);
-      return c.json({ success: true, message: 'Vídeo excluído com sucesso.' });
-    }
 
-    const files = await getJson<MediaFile[]>(c.env.TELEIOS_KV!, KEY.files, []);
-    const fileToDelete = files.find((f) => f.id === studyId);
-    if (fileToDelete) {
-      if (fileToDelete.r2Key) {
-        try {
-          await c.env.TELEIOS_MEDIA.delete(fileToDelete.r2Key);
-        } catch (e) {
-          console.error('[Worker] Erro ao deletar objeto R2:', e);
-        }
-      }
-      const filteredFiles = files.filter((f) => f.id !== studyId);
-      await putJson(c.env.TELEIOS_KV!, KEY.files, filteredFiles);
-      return c.json({ success: true, message: 'Arquivo excluído com sucesso.' });
+  if (studyToDelete) {
+    if (studyToDelete.fileId) toDeleteIds.add(studyToDelete.fileId);
+    if (studyToDelete.documentName) {
+      files.filter((f) => f.originalName === studyToDelete.documentName).forEach((f) => toDeleteIds.add(f.id));
     }
-
-    return c.json({ success: false, error: 'Conteúdo não encontrado.' }, 404);
   }
 
-  const filteredStudies = studies.filter((s) => s.id !== studyId);
-  await putJson(c.env.TELEIOS_KV!, KEY.studies, filteredStudies);
+  // Identificar qualquer arquivo ou vídeo que tenha ID igual ou referencie o studyId
+  files.filter((f) => f.id === studyId).forEach((f) => toDeleteIds.add(f.id));
+  videos.filter((v) => v.id === studyId || v.fileId === studyId).forEach((v) => {
+    toDeleteIds.add(v.id);
+    if (v.fileId) toDeleteIds.add(v.fileId);
+  });
 
-  // Limpar arquivo associado no R2 se for binário próprio
-  if (studyToDelete.fileId && !studyToDelete.fileId.startsWith('text_')) {
-    const files = await getJson<MediaFile[]>(c.env.TELEIOS_KV!, KEY.files, []);
-    const file = files.find((f) => f.id === studyToDelete.fileId);
-    if (file?.r2Key) {
+  // Excluir binários do R2 para todos os arquivos afetados
+  const filesToDelete = files.filter((f) => toDeleteIds.has(f.id));
+  for (const f of filesToDelete) {
+    if (f.r2Key) {
       try {
-        await c.env.TELEIOS_MEDIA.delete(file.r2Key);
+        await c.env.TELEIOS_MEDIA.delete(f.r2Key);
+        await c.env.TELEIOS_MEDIA.delete(`${f.r2Key}.thumb.webp`);
       } catch (e) {
         console.error('[Worker] Erro ao deletar objeto R2:', e);
       }
     }
-    const filteredFiles = files.filter((f) => f.id !== studyToDelete.fileId);
-    await putJson(c.env.TELEIOS_KV!, KEY.files, filteredFiles);
+    if (f.thumbnailKey) {
+      try {
+        await c.env.TELEIOS_MEDIA.delete(f.thumbnailKey);
+      } catch {}
+    }
   }
 
-  return c.json({ success: true, message: 'Conteúdo excluído com sucesso.' });
+  // Filtrar KV collections
+  const updatedStudies = studies.filter((s) => !toDeleteIds.has(s.id) && (!s.fileId || !toDeleteIds.has(s.fileId)));
+  const updatedFiles = files.filter((f) => !toDeleteIds.has(f.id));
+  const updatedVideos = videos.filter((v) => !toDeleteIds.has(v.id) && (!v.fileId || !toDeleteIds.has(v.fileId)));
+
+  toDeleteIds.forEach((id) => deletedSet.add(id));
+  const updatedDeletedIds = Array.from(deletedSet).slice(-1000);
+
+  await Promise.all([
+    putJson(c.env.TELEIOS_KV!, KEY.studies, updatedStudies),
+    putJson(c.env.TELEIOS_KV!, KEY.files, updatedFiles),
+    putJson(c.env.TELEIOS_KV!, KEY.videos, updatedVideos),
+    putJson(c.env.TELEIOS_KV!, 'teleios:deleted_ids', updatedDeletedIds),
+  ]);
+
+  return c.json({ success: true, message: 'Conteúdo excluído com sucesso permanentemente.' });
 });
 
 // ─── Galeria, Vídeos e Projetos ───────────────────────────────────────────────
@@ -3184,6 +3244,26 @@ export default {
     return app.fetch(req, env, ctx);
   },
   async scheduled(event: any, env: Bindings, ctx: ExecutionContext) {
+    try {
+      if (env.TELEIOS_KV) {
+        const nowIso = now();
+        const studies = await getJson<Study[]>(env.TELEIOS_KV, KEY.studies, []);
+        let updated = false;
+        studies.forEach((s) => {
+          if ((s.status === 'AGENDADO' || !s.published) && s.scheduledAt && s.scheduledAt <= nowIso) {
+            s.status = 'PUBLICADO';
+            s.published = true;
+            updated = true;
+          }
+        });
+        if (updated) {
+          await putJson(env.TELEIOS_KV, KEY.studies, studies);
+        }
+      }
+    } catch (e) {
+      console.error('[Cron] Falha ao publicar estudos agendados:', e);
+    }
+
     try {
       const stub = getCoordinatorStub(env);
       await stub.fetch('http://internal/alarm');

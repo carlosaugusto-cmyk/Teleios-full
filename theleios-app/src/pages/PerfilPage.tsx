@@ -159,6 +159,10 @@ export default function PerfilPage() {
   const [adminBook, setAdminBook] = useState('');
   const [adminChapter, setAdminChapter] = useState<number | ''>('');
   const [adminDate, setAdminDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [adminTime, setAdminTime] = useState(() => {
+    const nowD = new Date();
+    return `${String(nowD.getHours()).padStart(2, '0')}:${String(nowD.getMinutes()).padStart(2, '0')}`;
+  });
   const [adminCoverFile, setAdminCoverFile] = useState<File | null>(null);
   const [adminCoverPreview, setAdminCoverPreview] = useState<string>('');
   const [adminAutoDetected, setAdminAutoDetected] = useState<{ book: string; chapter: number } | null>(null);
@@ -274,11 +278,22 @@ export default function PerfilPage() {
       const topic = adminUploadTab === 'estudos' ? `${adminBook} ${adminChapter}` : 'Geral';
       const contentText = adminContent.trim() || `Documento anexado: ${adminDocFile.name}`;
 
+      let scheduledIso: string | null = null;
+      if (adminDate) {
+        const timeStr = adminTime || '00:00';
+        scheduledIso = new Date(`${adminDate}T${timeStr}:00`).toISOString();
+      } else {
+        scheduledIso = new Date().toISOString();
+      }
+      const isFuture = Boolean(scheduledIso && new Date(scheduledIso).getTime() > Date.now());
+      const status = isFuture ? 'AGENDADO' : 'PUBLICADO';
+      const published = !isFuture;
+
       const payload = {
         title: adminTitle.trim(),
         type: studyType,
-        status: 'PUBLICADO',
-        published: true,
+        status,
+        published,
         content: contentText,
         rawContent: contentText,
         summary: contentText.slice(0, 200),
@@ -289,14 +304,17 @@ export default function PerfilPage() {
         documentSize: uploadedDoc.size,
         generatedImgUrl: coverUrl,
         thumbnailUrl: thumbnailUrl,
-        scheduledAt: adminDate ? new Date(adminDate).toISOString() : new Date().toISOString(),
+        scheduledAt: scheduledIso,
       };
 
       const res = await createStudyFromApp(payload, phone, userIdentifier);
       if (res.success) {
+        const successMsg = isFuture
+          ? `⏰ ${studyType} "${adminTitle.trim()}" agendado com sucesso para ${new Date(scheduledIso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}!`
+          : `✅ ${studyType} "${adminTitle.trim()}" publicado com sucesso!`;
         setAdminUploadFeedback({
           type: 'success',
-          message: `${studyType} "${adminTitle.trim()}" publicado com sucesso!`,
+          message: successMsg,
         });
         setShowAdminUploadModal(false);
         setAdminDocFile(null);
@@ -1400,9 +1418,9 @@ export default function PerfilPage() {
                 </div>
               </div>
 
-              <label className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-xs sm:text-sm font-semibold rounded-xl transition-all cursor-pointer shadow-md shrink-0">
-                <FileText className="w-4 h-4" />
-                <span>Selecionar Documento</span>
+              <label className="relative overflow-hidden w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-xs sm:text-sm font-semibold rounded-xl transition-all cursor-pointer shadow-md shrink-0">
+                <FileText className="w-4 h-4 pointer-events-none" />
+                <span className="pointer-events-none">Selecionar Documento</span>
                 <input
                   type="file"
                   accept=".pdf,.docx,.doc,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
@@ -1413,7 +1431,7 @@ export default function PerfilPage() {
                       e.target.value = '';
                     }
                   }}
-                  className="hidden"
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20"
                 />
               </label>
             </div>
@@ -1504,8 +1522,8 @@ export default function PerfilPage() {
                             </p>
                           </div>
                         </div>
-                        <label className="px-2.5 py-1 text-xs text-blue-400 hover:text-blue-300 hover:bg-blue-950/50 rounded-lg cursor-pointer font-semibold border border-blue-500/30 transition-colors">
-                          Trocar
+                        <label className="relative overflow-hidden px-2.5 py-1 text-xs text-blue-400 hover:text-blue-300 hover:bg-blue-950/50 rounded-lg cursor-pointer font-semibold border border-blue-500/30 transition-colors">
+                          <span className="pointer-events-none">Trocar</span>
                           <input
                             type="file"
                             accept=".pdf,.docx,.doc,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
@@ -1513,14 +1531,14 @@ export default function PerfilPage() {
                               const f = e.target.files?.[0];
                               if (f) handleQuickDocumentSelect(f);
                             }}
-                            className="hidden"
+                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20"
                           />
                         </label>
                       </div>
                     ) : (
-                      <label className="flex items-center justify-center gap-2 p-4 border border-dashed border-blue-500/40 rounded-xl cursor-pointer hover:bg-blue-950/20 text-xs text-blue-400">
-                        <FileText size={16} />
-                        <span>Selecionar Documento (.pdf, .docx, .doc)</span>
+                      <label className="relative overflow-hidden flex items-center justify-center gap-2 p-4 border border-dashed border-blue-500/40 rounded-xl cursor-pointer hover:bg-blue-950/20 text-xs text-blue-400">
+                        <FileText size={16} className="pointer-events-none" />
+                        <span className="pointer-events-none">Selecionar Documento (.pdf, .docx, .doc)</span>
                         <input
                           type="file"
                           accept=".pdf,.docx,.doc,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
@@ -1528,7 +1546,7 @@ export default function PerfilPage() {
                             const f = e.target.files?.[0];
                             if (f) handleQuickDocumentSelect(f);
                           }}
-                          className="hidden"
+                          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20"
                         />
                       </label>
                     )}
@@ -1609,17 +1627,30 @@ export default function PerfilPage() {
                     </div>
                   )}
 
-                  {/* Data de Publicação */}
+                  {/* Data e Horário de Publicação / Agendamento */}
                   <div>
-                    <label className="block text-xs font-bold text-[var(--color-text-muted)] mb-1">
-                      Data de Publicação
-                    </label>
-                    <input
-                      type="date"
-                      value={adminDate}
-                      onChange={(e) => setAdminDate(e.target.value)}
-                      className="w-full px-3.5 py-2 bg-[var(--color-surface-alt)] border border-[var(--color-border)] rounded-xl text-xs text-white focus:outline-none focus:border-blue-500"
-                    />
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-xs font-bold text-[var(--color-text-muted)]">
+                        Data e Horário de Publicação
+                      </label>
+                      <span className="text-[10px] text-blue-400">
+                        Futuro = Agendado no servidor
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <input
+                        type="date"
+                        value={adminDate}
+                        onChange={(e) => setAdminDate(e.target.value)}
+                        className="w-full px-3 py-2 bg-[var(--color-surface-alt)] border border-[var(--color-border)] rounded-xl text-xs text-white focus:outline-none focus:border-blue-500"
+                      />
+                      <input
+                        type="time"
+                        value={adminTime}
+                        onChange={(e) => setAdminTime(e.target.value)}
+                        className="w-full px-3 py-2 bg-[var(--color-surface-alt)] border border-[var(--color-border)] rounded-xl text-xs text-white focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
                   </div>
 
                   {/* Mensagem / Resumo / Observação */}
@@ -1661,9 +1692,9 @@ export default function PerfilPage() {
                         </button>
                       </div>
                     ) : (
-                      <label className="flex items-center justify-center gap-2 p-3 border border-dashed border-[var(--color-border)] rounded-xl cursor-pointer hover:border-blue-500/50 text-xs text-[var(--color-text-muted)] transition-colors">
-                        <ImageIcon size={16} />
-                        <span>Adicionar imagem de capa</span>
+                      <label className="relative overflow-hidden flex items-center justify-center gap-2 p-3 border border-dashed border-[var(--color-border)] rounded-xl cursor-pointer hover:border-blue-500/50 text-xs text-[var(--color-text-muted)] transition-colors">
+                        <ImageIcon size={16} className="pointer-events-none" />
+                        <span className="pointer-events-none">Adicionar imagem de capa</span>
                         <input
                           type="file"
                           accept="image/*"
@@ -1671,7 +1702,7 @@ export default function PerfilPage() {
                             const img = e.target.files?.[0];
                             if (img) setAdminCoverFile(img);
                           }}
-                          className="hidden"
+                          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20"
                         />
                       </label>
                     )}

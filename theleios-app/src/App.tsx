@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
-import { ArrowLeft, FileText, BookOpen } from 'lucide-react';
+import { ArrowLeft, FileText, BookOpen, Bell } from 'lucide-react';
 
 import TopBar from '@/components/TopBar';
 import BottomNav from '@/components/BottomNav';
@@ -10,9 +10,10 @@ import DevocionaisPage from '@/pages/DevocionaisPage';
 import EstudosPage from '@/pages/EstudosPage';
 import PerfilPage from '@/pages/PerfilPage';
 
-import { fetchEstudo, type Study } from '@/lib/api';
+import { fetchEstudo, fetchEstudos, type Study } from '@/lib/api';
 import { isLoggedIn } from '@/lib/auth';
 import { getState, setState, markAsRead, wasLoginPromptShown } from '@/lib/storage';
+import { checkNewContentAndNotify } from '@/lib/notifications';
 
 // ─── Página de detalhe do conteúdo (tela cheia) ─────────────────────────────
 
@@ -217,6 +218,29 @@ export default function App() {
     else if (location.pathname === '/perfil') setState({ lastPage: 'perfil' });
   }, [location.pathname]);
 
+  const [newContentBanner, setNewContentBanner] = useState<Study | null>(null);
+
+  // Verificação periódica de novos devocionais/estudos para notificações
+  useEffect(() => {
+    const runCheck = async () => {
+      try {
+        const studies = await fetchEstudos();
+        checkNewContentAndNotify(studies, (newStudy) => {
+          setNewContentBanner(newStudy);
+        });
+      } catch {}
+    };
+
+    runCheck();
+    const interval = setInterval(runCheck, 45000); // Verifica a cada 45s
+    window.addEventListener('focus', runCheck);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', runCheck);
+    };
+  }, []);
+
   // Conteúdo em tela cheia — sem TopBar e BottomNav
   if (isConteudoPage) {
     return (
@@ -234,6 +258,43 @@ export default function App() {
   return (
     <div className="flex flex-col min-h-dvh bg-[var(--color-bg)]">
       <TopBar title={title} />
+
+      {/* Banner de Notificação de Novo Conteúdo */}
+      {newContentBanner && (
+        <div
+          onClick={() => {
+            const studyId = newContentBanner.id;
+            setNewContentBanner(null);
+            navigate(`/conteudo/${studyId}`);
+          }}
+          className="mx-4 mt-3 p-3.5 bg-gradient-to-r from-blue-950/90 via-indigo-950/90 to-blue-950/90 border border-blue-500/50 rounded-2xl shadow-xl backdrop-blur-md cursor-pointer flex items-center justify-between gap-3 animate-fade-in"
+        >
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-10 h-10 rounded-xl bg-blue-500/20 border border-blue-500/40 flex items-center justify-center text-blue-400 shrink-0 shadow-inner">
+              <Bell size={20} className="animate-bounce" />
+            </div>
+            <div className="min-w-0">
+              <span className="text-[10px] font-bold text-blue-300 uppercase tracking-wider">
+                Novo {newContentBanner.type || 'Devocional'} Publicado!
+              </span>
+              <p className="text-xs font-bold text-white truncate">{newContentBanner.title}</p>
+              <p className="text-[10px] text-blue-200/70">Toque aqui para ler agora</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setNewContentBanner(null);
+            }}
+            className="p-1 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 shrink-0"
+            aria-label="Fechar aviso"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       <main className="flex-1 overflow-y-auto">
         <Routes>
           <Route path="/" element={<DevocionaisPage />} />

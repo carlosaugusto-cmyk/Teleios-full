@@ -8,6 +8,33 @@
     <title>Teleios Admin — Gestão & Operações</title>
     <meta name="robots" content="noindex, nofollow" />
 
+    <!-- Escudo contra bug interno do Chrome DevTools (Soft Navigation / reportAllChanges / startTime) -->
+    <script>
+      (function() {
+        function isSoftNavBug(err, msg) {
+          var m = String(msg || (err && err.message) || '');
+          var s = String((err && err.stack) || '');
+          return m.indexOf("reading 'startTime'") !== -1 ||
+                 m.indexOf('reportAllChanges') !== -1 ||
+                 s.indexOf('reportAllChanges') !== -1;
+        }
+        window.addEventListener('error', function(e) {
+          if (isSoftNavBug(e.error, e.message)) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            return true;
+          }
+        }, true);
+        window.addEventListener('unhandledrejection', function(e) {
+          if (isSoftNavBug(e.reason, e.reason && e.reason.message)) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            return true;
+          }
+        }, true);
+      })();
+    </script>
+
     <!-- PWA Meta Tags & Icons -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />

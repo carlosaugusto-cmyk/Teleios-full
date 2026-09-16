@@ -17,6 +17,7 @@ import {
   ChevronRight,
   ChevronsUpDown,
   Calendar,
+  Clock,
   Image as ImageIcon,
   ChevronLeft,
   Filter,
@@ -72,6 +73,8 @@ export const EstudosDevocionaisManager: React.FC<EstudosDevocionaisManagerProps>
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const [coverPreviewUrl, setCoverPreviewUrl] = useState<string>('');
   const [docFile, setDocFile] = useState<File | null>(null);
+  const [formScheduledDate, setFormScheduledDate] = useState<string>('');
+  const [formScheduledTime, setFormScheduledTime] = useState<string>('');
   const [existingDoc, setExistingDoc] = useState<{
     url: string;
     name: string;
@@ -168,6 +171,9 @@ export const EstudosDevocionaisManager: React.FC<EstudosDevocionaisManagerProps>
     setExistingDoc(null);
     setDocError(null);
     setErrors({});
+    const nowD = new Date();
+    setFormScheduledDate(nowD.toISOString().split('T')[0]);
+    setFormScheduledTime(`${String(nowD.getHours()).padStart(2, '0')}:${String(nowD.getMinutes()).padStart(2, '0')}`);
     setIsModalOpen(true);
   };
 
@@ -179,6 +185,15 @@ export const EstudosDevocionaisManager: React.FC<EstudosDevocionaisManagerProps>
     setCoverPreviewUrl(item.generatedImgUrl || item.aiImageUrl || item.mediaFile?.driveWebViewLink || '');
     setDocFile(null);
     setDocError(null);
+    if (item.scheduledAt) {
+      const d = new Date(item.scheduledAt);
+      setFormScheduledDate(d.toISOString().split('T')[0]);
+      setFormScheduledTime(`${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`);
+    } else {
+      const nowD = new Date();
+      setFormScheduledDate(nowD.toISOString().split('T')[0]);
+      setFormScheduledTime(`${String(nowD.getHours()).padStart(2, '0')}:${String(nowD.getMinutes()).padStart(2, '0')}`);
+    }
     if (item.documentUrl) {
       setExistingDoc({
         url: item.documentUrl,
@@ -237,6 +252,9 @@ export const EstudosDevocionaisManager: React.FC<EstudosDevocionaisManagerProps>
     setExistingDoc(null);
     setDocError(null);
     setErrors({});
+    const nowD = new Date();
+    setFormScheduledDate(nowD.toISOString().split('T')[0]);
+    setFormScheduledTime(`${String(nowD.getHours()).padStart(2, '0')}:${String(nowD.getMinutes()).padStart(2, '0')}`);
 
     if (activeTab === 'estudos') {
       const detected = extractBibleReference(cleanTitle);
@@ -351,11 +369,21 @@ export const EstudosDevocionaisManager: React.FC<EstudosDevocionaisManagerProps>
         ? `${formBook} ${formChapter}`
         : (editingItem?.topic || 'Geral');
 
+      let scheduledIso: string | null = null;
+      if (formScheduledDate) {
+        const timeStr = formScheduledTime || '00:00';
+        scheduledIso = new Date(`${formScheduledDate}T${timeStr}:00`).toISOString();
+      }
+      const isFuture = Boolean(scheduledIso && new Date(scheduledIso).getTime() > Date.now());
+      const finalStatus = isFuture ? 'AGENDADO' : 'PUBLICADO';
+      const finalPublished = !isFuture;
+
       const payload = {
         title: formTitle.trim(),
         type: contentType,
-        status: 'PUBLICADO',
-        published: true,
+        status: finalStatus,
+        published: finalPublished,
+        scheduledAt: scheduledIso,
         content: textValue,
         rawContent: textValue,
         summary: textValue.length > 200 ? `${textValue.slice(0, 197)}...` : textValue,
@@ -401,13 +429,23 @@ export const EstudosDevocionaisManager: React.FC<EstudosDevocionaisManagerProps>
 
   const handleDelete = async () => {
     if (!deleteConfirmItem) return;
+    const toDeleteId = deleteConfirmItem.id;
+    const toDeleteFileId = deleteConfirmItem.fileId;
     try {
-      const res = await apiFetch(`/api/estudos/${deleteConfirmItem.id}`, { method: 'DELETE' });
+      const res = await apiFetch(`/api/estudos/${toDeleteId}`, { method: 'DELETE' });
       const json = await res.json();
       if (json.success) {
         showFeedback('success', 'Excluído com sucesso.');
+        setStudies((prev) =>
+          prev.filter(
+            (s) =>
+              s.id !== toDeleteId &&
+              s.fileId !== toDeleteId &&
+              (!toDeleteFileId || (s.id !== toDeleteFileId && s.fileId !== toDeleteFileId))
+          )
+        );
         setDeleteConfirmItem(null);
-        loadData();
+        await loadData();
       } else {
         showFeedback('error', json.error || 'Erro ao excluir.');
       }
@@ -612,9 +650,9 @@ export const EstudosDevocionaisManager: React.FC<EstudosDevocionaisManagerProps>
             </div>
           </div>
 
-          <label className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-xs sm:text-sm font-semibold rounded-xl transition-all cursor-pointer shadow-md shrink-0">
-            <FileText className="w-4 h-4" />
-            <span>Selecionar Documento</span>
+          <label className="relative overflow-hidden w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-xs sm:text-sm font-semibold rounded-xl transition-all cursor-pointer shadow-md shrink-0">
+            <FileText className="w-4 h-4 pointer-events-none" />
+            <span className="pointer-events-none">Selecionar Documento</span>
             <input
               type="file"
               accept=".pdf,.docx,.doc,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
@@ -625,7 +663,7 @@ export const EstudosDevocionaisManager: React.FC<EstudosDevocionaisManagerProps>
                   e.target.value = '';
                 }
               }}
-              className="hidden"
+              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20"
             />
           </label>
         </div>
@@ -840,9 +878,29 @@ export const EstudosDevocionaisManager: React.FC<EstudosDevocionaisManagerProps>
                             </p>
                           </td>
 
-                          {/* Data */}
+                          {/* Data e Status */}
                           <td className="py-3 px-4 whitespace-nowrap text-xs text-gray-400">
-                            {new Date(item.createdAt).toLocaleDateString('pt-BR')}
+                            {item.status === 'AGENDADO' ? (
+                              <div className="flex flex-col gap-0.5">
+                                <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-300 bg-amber-950/60 border border-amber-800/50 px-1.5 py-0.5 rounded w-fit">
+                                  <Clock className="w-2.5 h-2.5" />
+                                  Agendado
+                                </span>
+                                <span className="text-[10px] text-amber-400/80">
+                                  {item.scheduledAt ? new Date(item.scheduledAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : 'Futuro'}
+                                </span>
+                              </div>
+                            ) : (
+                              <div className="flex flex-col gap-0.5">
+                                <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-300 bg-emerald-950/60 border border-emerald-800/50 px-1.5 py-0.5 rounded w-fit">
+                                  <CheckCircle2 className="w-2.5 h-2.5" />
+                                  Publicado
+                                </span>
+                                <span className="text-[11px] text-gray-400">
+                                  {new Date(item.createdAt).toLocaleDateString('pt-BR')}
+                                </span>
+                              </div>
+                            )}
                           </td>
 
                           {/* Ações */}
@@ -1045,9 +1103,16 @@ export const EstudosDevocionaisManager: React.FC<EstudosDevocionaisManagerProps>
                                         {(item.documentType || 'DOC').toUpperCase()}
                                       </span>
                                     )}
-                                    <span className="text-[11px] text-gray-500">
-                                      {new Date(item.createdAt).toLocaleDateString('pt-BR')}
-                                    </span>
+                                    {item.status === 'AGENDADO' ? (
+                                      <span className="px-2 py-0.5 rounded bg-amber-950/80 text-amber-300 font-bold text-[10px] border border-amber-700/50 flex items-center gap-1">
+                                        <Clock className="w-2.5 h-2.5" />
+                                        Agendado {item.scheduledAt ? new Date(item.scheduledAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) : ''}
+                                      </span>
+                                    ) : (
+                                      <span className="text-[11px] text-gray-500">
+                                        {new Date(item.createdAt).toLocaleDateString('pt-BR')}
+                                      </span>
+                                    )}
                                   </div>
 
                                   <h4 className="font-semibold text-white text-sm group-hover:text-blue-400 transition-colors truncate">
@@ -1190,17 +1255,17 @@ export const EstudosDevocionaisManager: React.FC<EstudosDevocionaisManagerProps>
                     </div>
                   </div>
                 ) : (
-                  <label className="flex flex-col items-center justify-center p-5 border-2 border-dashed border-blue-500/40 hover:border-blue-400 rounded-xl bg-[#111827] cursor-pointer transition-all text-center group">
-                    <div className="flex items-center justify-center w-12 h-12 rounded-2xl bg-blue-950/80 border border-blue-800/50 text-blue-400 mb-2.5 group-hover:scale-105 transition-transform shadow-inner">
+                  <label className="relative overflow-hidden flex flex-col items-center justify-center p-5 border-2 border-dashed border-blue-500/40 hover:border-blue-400 rounded-xl bg-[#111827] cursor-pointer transition-all text-center group">
+                    <div className="flex items-center justify-center w-12 h-12 rounded-2xl bg-blue-950/80 border border-blue-800/50 text-blue-400 mb-2.5 group-hover:scale-105 transition-transform shadow-inner pointer-events-none">
                       <UploadCloud className="w-6 h-6" />
                     </div>
-                    <span className="text-sm text-white font-semibold">
+                    <span className="text-sm text-white font-semibold pointer-events-none">
                       Arraste ou selecione um documento
                     </span>
-                    <span className="text-xs text-gray-400 mt-1">
+                    <span className="text-xs text-gray-400 mt-1 pointer-events-none">
                       Formatos aceitos: <strong className="text-blue-300">.PDF</strong>, <strong className="text-indigo-300">.DOCX</strong>, <strong className="text-sky-300">.DOC</strong>
                     </span>
-                    <span className="mt-3 inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 group-hover:bg-blue-500 text-white text-xs font-semibold shadow-md transition-colors">
+                    <span className="mt-3 inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 group-hover:bg-blue-500 text-white text-xs font-semibold shadow-md transition-colors pointer-events-none">
                       <FileText className="w-3.5 h-3.5" />
                       <span>Procurar Documento no Computador</span>
                     </span>
@@ -1232,7 +1297,7 @@ export const EstudosDevocionaisManager: React.FC<EstudosDevocionaisManagerProps>
                           }
                         }
                       }}
-                      className="hidden"
+                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20"
                     />
                   </label>
                 )}
@@ -1393,12 +1458,12 @@ export const EstudosDevocionaisManager: React.FC<EstudosDevocionaisManagerProps>
                     </div>
                   )}
 
-                  <label className="flex-1 w-full flex flex-col items-center justify-center p-4 border-2 border-dashed border-[#374151] hover:border-blue-500 rounded-xl bg-[#0A0F1A] cursor-pointer transition-colors text-center">
-                    <UploadCloud className="w-6 h-6 text-gray-400 mb-1" />
-                    <span className="text-xs text-gray-300 font-medium">
+                  <label className="relative overflow-hidden flex-1 w-full flex flex-col items-center justify-center p-4 border-2 border-dashed border-[#374151] hover:border-blue-500 rounded-xl bg-[#0A0F1A] cursor-pointer transition-colors text-center">
+                    <UploadCloud className="w-6 h-6 text-gray-400 mb-1 pointer-events-none" />
+                    <span className="text-xs text-gray-300 font-medium pointer-events-none">
                       {coverFile ? coverFile.name : 'Clique para selecionar a imagem de capa'}
                     </span>
-                    <span className="text-[11px] text-gray-400 mt-0.5">
+                    <span className="text-[11px] text-gray-400 mt-0.5 pointer-events-none">
                       Aceita JPG, PNG, WebP • Gera miniatura leve de 500px para cards mobile
                     </span>
                     <input
@@ -1418,11 +1483,45 @@ export const EstudosDevocionaisManager: React.FC<EstudosDevocionaisManagerProps>
                           setCoverFile(file);
                         }
                       }}
-                      className="hidden"
+                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20"
                     />
                   </label>
                 </div>
                 {errors.cover && <p className="text-xs text-red-400 mt-1">{errors.cover}</p>}
+              </div>
+
+              {/* Agendamento de Publicação no Backend */}
+              <div className="p-4 bg-[#0A0F1A]/80 border border-[#374151] rounded-xl space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                  <label className="text-xs font-bold text-gray-200 uppercase tracking-wider flex items-center gap-1.5">
+                    <Clock className="w-4 h-4 text-blue-400" />
+                    <span>Data e Horário de Publicação</span>
+                  </label>
+                  <span className="text-[11px] text-blue-300">
+                    Se a data/hora for futura, o servidor agenda automaticamente
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] text-gray-400 mb-1">Data</label>
+                    <input
+                      type="date"
+                      value={formScheduledDate}
+                      onChange={(e) => setFormScheduledDate(e.target.value)}
+                      className="w-full bg-[#111827] border border-[#374151] rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-gray-400 mb-1">Horário</label>
+                    <input
+                      type="time"
+                      value={formScheduledTime}
+                      onChange={(e) => setFormScheduledTime(e.target.value)}
+                      className="w-full bg-[#111827] border border-[#374151] rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                </div>
               </div>
 
               {/* Botões do Modal */}

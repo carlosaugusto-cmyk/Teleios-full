@@ -127,8 +127,8 @@ export const authMiddleware = async (c: Context<WorkerEnvironment>, next: () => 
         const userMatches =
           Boolean(adminUser) &&
           (u.id === adminUser ||
-            (u.username && u.username.toLowerCase() === adminUser.toLowerCase()) ||
-            (u.email && u.email.toLowerCase() === adminUser.toLowerCase()));
+            (u.username && u.username.toLowerCase() === adminUser!.toLowerCase()) ||
+            (u.email && u.email.toLowerCase() === adminUser!.toLowerCase()));
         return Boolean(phoneMatches || userMatches);
       });
       if (foundUser && (foundUser.role === 'admin' || foundUser.role === 'superadmin' || foundUser.isAdmin)) {
