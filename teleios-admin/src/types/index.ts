@@ -103,6 +103,8 @@ export interface MediaFile {
   category: ContentCategory;
   driveFileId?: string | null;
   driveWebViewLink?: string | null;
+  thumbnailKey?: string | null;
+  thumbnailUrl?: string | null;
   driveFolderPath?: string | null;
   youtubeVideoId?: string | null;
   status: ProcessingStatus;
@@ -126,6 +128,7 @@ export interface Study {
   summary: string | null;
   aiImagePrompt: string | null;
   generatedImgUrl: string | null;
+  thumbnailUrl?: string | null;
   aiImageUrl?: string | null;
   videoUrl?: string | null;
   scheduledAt: string | null;

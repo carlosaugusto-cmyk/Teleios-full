@@ -87,7 +87,10 @@ export default function EstudosPage() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {filteredEstudos.map((study) => {
-            const cover = study.generatedImgUrl || study.aiImageUrl || study.mediaFile?.driveWebViewLink;
+            const cover = study.thumbnailUrl
+              || (study.generatedImgUrl?.includes('/api/media/') ? `${study.generatedImgUrl}?variant=thumbnail` : study.generatedImgUrl)
+              || study.aiImageUrl
+              || study.mediaFile?.driveWebViewLink;
             const ref = extractBibleReference(`${study.title} ${study.rawContent || ''} ${study.topic || ''}`);
             const bookLabel = ref ? `${ref.book} ${ref.chapter}` : (study.topic || 'Estudo');
             const preview = study.summary || study.content || study.rawContent || '';
@@ -104,6 +107,8 @@ export default function EstudosPage() {
                     <img
                       src={cover}
                       alt={study.title}
+                      loading="lazy"
+                      decoding="async"
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                     />
                     <div className="absolute top-3 left-3 flex flex-wrap items-center gap-1.5">

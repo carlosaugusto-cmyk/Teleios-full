@@ -29,6 +29,7 @@ import { Study } from '../../types/index.ts';
 import { apiFetch } from '../../services/api.service.ts';
 import { safeApiFetch } from '../../utils/contentSanitizer.ts';
 import { BIBLE_BOOKS, extractBibleReference, BibleBookInfo } from '../../utils/bibleExtractor.ts';
+import { uploadImageWithThumbnail } from '../../utils/imageOptimizer.ts';
 
 interface EstudosDevocionaisManagerProps {
   defaultTab?: 'devocionais' | 'estudos';
@@ -213,19 +214,48 @@ export const EstudosDevocionaisManager: React.FC<EstudosDevocionaisManagerProps>
     setIsModalOpen(true);
   };
 
-  const uploadCoverImage = async (file: File): Promise<string | null> => {
+  const handleQuickDocumentSelect = (file: File) => {
+    const ext = '.' + (file.name.split('.').pop()?.toLowerCase() || '');
+    if (!['.pdf', '.docx', '.doc'].includes(ext)) {
+      showFeedback('error', 'Formato inválido. Selecione apenas arquivos DOC, DOCX ou PDF.');
+      return;
+    }
+    const cleanTitle = file.name
+      .replace(/\.[^.]+$/, '')
+      .replace(/[_-]+/g, ' ')
+      .trim();
+
+    setEditingItem(null);
+    setFormTitle(cleanTitle);
+    setFormContent('');
+    setFormBook('');
+    setFormChapter('');
+    setAutoDetected(null);
+    setCoverFile(null);
+    setCoverPreviewUrl('');
+    setDocFile(file);
+    setExistingDoc(null);
+    setDocError(null);
+    setErrors({});
+
+    if (activeTab === 'estudos') {
+      const detected = extractBibleReference(cleanTitle);
+      if (detected) {
+        setFormBook(detected.book);
+        setFormChapter(detected.chapter);
+        setAutoDetected(detected);
+      }
+    }
+
+    setIsModalOpen(true);
+    showFeedback('success', `Documento "${file.name}" carregado! Complete e salve.`);
+  };
+
+  const uploadCoverImage = async (file: File): Promise<{ url: string; thumbnailUrl: string } | null> => {
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('fileName', file.name);
-      formData.append('category', 'GALERIA');
-      const res = await apiFetch('/api/upload', {
-        method: 'POST',
-        body: formData,
-      });
-      const json = await res.json();
-      if (json.success && json.mediaFile) {
-        return json.mediaFile.driveWebViewLink || (json.mediaFile.id ? `/api/media/${json.mediaFile.id}` : null);
+      const res = await uploadImageWithThumbnail(file, 'GALERIA');
+      if (res) {
+        return { url: res.url, thumbnailUrl: res.thumbnailUrl };
       }
       return null;
     } catch {
@@ -291,9 +321,13 @@ export const EstudosDevocionaisManager: React.FC<EstudosDevocionaisManagerProps>
     setIsSaving(true);
     try {
       let finalCoverUrl = coverPreviewUrl;
+      let finalThumbUrl = editingItem?.thumbnailUrl || null;
       if (coverFile) {
-        const uploadedUrl = await uploadCoverImage(coverFile);
-        if (uploadedUrl) finalCoverUrl = uploadedUrl;
+        const uploadedCover = await uploadCoverImage(coverFile);
+        if (uploadedCover) {
+          finalCoverUrl = uploadedCover.url;
+          finalThumbUrl = uploadedCover.thumbnailUrl;
+        }
       }
 
       let finalDocUrl = existingDoc?.url || null;
@@ -327,6 +361,7 @@ export const EstudosDevocionaisManager: React.FC<EstudosDevocionaisManagerProps>
         summary: textValue.length > 200 ? `${textValue.slice(0, 197)}...` : textValue,
         topic: topicValue,
         generatedImgUrl: finalCoverUrl || null,
+        thumbnailUrl: finalThumbUrl || null,
         aiImageUrl: finalCoverUrl || null,
         documentUrl: finalDocUrl,
         documentName: finalDocName,
@@ -555,6 +590,47 @@ export const EstudosDevocionaisManager: React.FC<EstudosDevocionaisManagerProps>
         </button>
       </div>
 
+      {/* ─── UPLOAD RÁPIDO DE DOCUMENTOS (PDF / DOCX) ─────────────────────────── */}
+      <div className="p-4 sm:p-5 bg-gradient-to-r from-blue-950/40 via-[#111827] to-[#111827] border-2 border-dashed border-blue-600/40 hover:border-blue-500/80 rounded-2xl transition-all shadow-lg">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3.5 min-w-0">
+            <div className="w-12 h-12 rounded-xl bg-blue-600/20 border border-blue-500/30 flex items-center justify-center text-blue-400 shrink-0">
+              <UploadCloud className="w-6 h-6" />
+            </div>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="text-sm sm:text-base font-bold text-white tracking-tight">
+                  Upload Rápido de Documentos
+                </h3>
+                <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-blue-900/60 text-blue-300 border border-blue-600/40 uppercase">
+                  PDF • DOCX • DOC
+                </span>
+              </div>
+              <p className="text-xs text-gray-400 mt-1 truncate sm:whitespace-normal">
+                Clique para selecionar ou arraste um arquivo para criar um novo {activeTab === 'devocionais' ? 'Devocional' : 'Estudo Bíblico'} com título e visor automático.
+              </p>
+            </div>
+          </div>
+
+          <label className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-xs sm:text-sm font-semibold rounded-xl transition-all cursor-pointer shadow-md shrink-0">
+            <FileText className="w-4 h-4" />
+            <span>Selecionar Documento</span>
+            <input
+              type="file"
+              accept=".pdf,.docx,.doc,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) {
+                  handleQuickDocumentSelect(file);
+                  e.target.value = '';
+                }
+              }}
+              className="hidden"
+            />
+          </label>
+        </div>
+      </div>
+
       {/* Barra de Busca e Ferramentas */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
         <div className="relative flex-1">
@@ -615,7 +691,10 @@ export const EstudosDevocionaisManager: React.FC<EstudosDevocionaisManagerProps>
               {/* Visualização em CARDS para Mobile (evita quebra de layout) */}
               <div className="block md:hidden p-3 space-y-3 bg-[#0A0F1A]/60">
                 {paginatedDevocionais.map((item) => {
-                  const cover = item.generatedImgUrl || item.aiImageUrl || item.mediaFile?.driveWebViewLink;
+                  const cover = item.thumbnailUrl
+                    || (item.generatedImgUrl?.includes('/api/media/') ? `${item.generatedImgUrl}?variant=thumbnail` : item.generatedImgUrl)
+                    || item.aiImageUrl
+                    || item.mediaFile?.driveWebViewLink;
                   return (
                     <div
                       key={item.id}
@@ -626,6 +705,8 @@ export const EstudosDevocionaisManager: React.FC<EstudosDevocionaisManagerProps>
                           <img
                             src={cover}
                             alt={item.title}
+                            loading="lazy"
+                            decoding="async"
                             className="w-16 h-16 rounded-xl object-cover border border-[#374151] shrink-0"
                           />
                         ) : (
@@ -707,7 +788,10 @@ export const EstudosDevocionaisManager: React.FC<EstudosDevocionaisManagerProps>
                   </thead>
                   <tbody className="divide-y divide-[#1F2937] text-sm">
                     {paginatedDevocionais.map((item) => {
-                      const cover = item.generatedImgUrl || item.aiImageUrl || item.mediaFile?.driveWebViewLink;
+                      const cover = item.thumbnailUrl
+                        || (item.generatedImgUrl?.includes('/api/media/') ? `${item.generatedImgUrl}?variant=thumbnail` : item.generatedImgUrl)
+                        || item.aiImageUrl
+                        || item.mediaFile?.driveWebViewLink;
                       return (
                         <tr key={item.id} className="hover:bg-[#1F2937]/50 transition-colors group">
                           {/* Capa */}
@@ -716,6 +800,8 @@ export const EstudosDevocionaisManager: React.FC<EstudosDevocionaisManagerProps>
                               <img
                                 src={cover}
                                 alt={item.title}
+                                loading="lazy"
+                                decoding="async"
                                 className="w-12 h-12 rounded-lg object-cover border border-[#374151]"
                               />
                             ) : (
@@ -923,7 +1009,10 @@ export const EstudosDevocionaisManager: React.FC<EstudosDevocionaisManagerProps>
                         {group.items.map((item) => {
                           const ref = extractBibleReference(`${item.title} ${item.content || item.rawContent || ''} ${item.topic || ''}`);
                           const capLabel = ref ? `Capítulo ${ref.chapter}` : (item.topic || 'Geral');
-                          const cover = item.generatedImgUrl || item.aiImageUrl || item.mediaFile?.driveWebViewLink;
+                          const cover = item.thumbnailUrl
+                            || (item.generatedImgUrl?.includes('/api/media/') ? `${item.generatedImgUrl}?variant=thumbnail` : item.generatedImgUrl)
+                            || item.aiImageUrl
+                            || item.mediaFile?.driveWebViewLink;
 
                           return (
                             <div
@@ -935,6 +1024,8 @@ export const EstudosDevocionaisManager: React.FC<EstudosDevocionaisManagerProps>
                                   <img
                                     src={cover}
                                     alt={item.title}
+                                    loading="lazy"
+                                    decoding="async"
                                     className="w-14 h-14 rounded-xl object-cover border border-[#374151] shrink-0"
                                   />
                                 ) : (
@@ -1099,19 +1190,26 @@ export const EstudosDevocionaisManager: React.FC<EstudosDevocionaisManagerProps>
                     </div>
                   </div>
                 ) : (
-                  <label className="flex flex-col items-center justify-center p-4 border border-dashed border-[#4B5563] hover:border-blue-500 rounded-xl bg-[#111827]/60 cursor-pointer transition-colors text-center group">
-                    <div className="flex items-center justify-center w-10 h-10 rounded-full bg-blue-950/60 border border-blue-800/40 text-blue-400 mb-2 group-hover:scale-105 transition-transform">
-                      <UploadCloud className="w-5 h-5" />
+                  <label className="flex flex-col items-center justify-center p-5 border-2 border-dashed border-blue-500/40 hover:border-blue-400 rounded-xl bg-[#111827] cursor-pointer transition-all text-center group">
+                    <div className="flex items-center justify-center w-12 h-12 rounded-2xl bg-blue-950/80 border border-blue-800/50 text-blue-400 mb-2.5 group-hover:scale-105 transition-transform shadow-inner">
+                      <UploadCloud className="w-6 h-6" />
                     </div>
-                    <span className="text-xs text-gray-300 font-medium">
-                      Clique para selecionar ou arraste um documento (.doc, .docx, .pdf)
+                    <span className="text-sm text-white font-semibold">
+                      Arraste ou selecione um documento
                     </span>
-                    <span className="text-[11px] text-gray-500 mt-1">
-                      Compatível com visualização móvel rápida no Teleios App
+                    <span className="text-xs text-gray-400 mt-1">
+                      Formatos aceitos: <strong className="text-blue-300">.PDF</strong>, <strong className="text-indigo-300">.DOCX</strong>, <strong className="text-sky-300">.DOC</strong>
+                    </span>
+                    <span className="mt-3 inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 group-hover:bg-blue-500 text-white text-xs font-semibold shadow-md transition-colors">
+                      <FileText className="w-3.5 h-3.5" />
+                      <span>Procurar Documento no Computador</span>
                     </span>
                     <input
                       type="file"
                       accept=".pdf,.docx,.doc,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                      onClick={(e) => {
+                        (e.target as HTMLInputElement).value = '';
+                      }}
                       onChange={(e) => {
                         const file = e.target.files?.[0];
                         if (file) {
@@ -1300,8 +1398,8 @@ export const EstudosDevocionaisManager: React.FC<EstudosDevocionaisManagerProps>
                     <span className="text-xs text-gray-300 font-medium">
                       {coverFile ? coverFile.name : 'Clique para selecionar a imagem de capa'}
                     </span>
-                    <span className="text-[11px] text-gray-500 mt-0.5">
-                      Aceita formatos JPG, PNG, WebP ou GIF
+                    <span className="text-[11px] text-gray-400 mt-0.5">
+                      Aceita JPG, PNG, WebP • Gera miniatura leve de 500px para cards mobile
                     </span>
                     <input
                       type="file"

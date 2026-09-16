@@ -47,7 +47,10 @@ export default function DevocionaisPage() {
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4">
       {devocionais.map((item) => {
         const status = getReadStatus(item.id);
-        const cover = item.generatedImgUrl || item.aiImageUrl || item.mediaFile?.driveWebViewLink;
+        const cover = item.thumbnailUrl
+          || (item.generatedImgUrl?.includes('/api/media/') ? `${item.generatedImgUrl}?variant=thumbnail` : item.generatedImgUrl)
+          || item.aiImageUrl
+          || item.mediaFile?.driveWebViewLink;
         const preview = item.summary || item.content || item.rawContent || '';
 
         return (
@@ -62,6 +65,8 @@ export default function DevocionaisPage() {
                 <img
                   src={cover}
                   alt={item.title}
+                  loading="lazy"
+                  decoding="async"
                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                 />
                 <div className="absolute top-3 right-3">

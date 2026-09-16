@@ -311,6 +311,7 @@ app.get('/api/estudos', async (c) => {
       status,
       published: isPublished,
       mediaFile: file,
+      thumbnailUrl: s.thumbnailUrl || (file?.thumbnailKey ? `/api/media/${file.id}?variant=thumbnail` : null),
     };
   });
 
@@ -520,6 +521,11 @@ app.post('/api/estudos', authMiddleware, requirePermission('estudos'), async (c)
     topic: body.topic || null,
     aiImagePrompt: null,
     generatedImgUrl: body.generatedImgUrl || null,
+    thumbnailUrl: (body as any).thumbnailUrl || null,
+    documentUrl: (body as any).documentUrl || null,
+    documentName: (body as any).documentName || null,
+    documentType: (body as any).documentType || null,
+    documentSize: (body as any).documentSize || null,
     videoUrl: body.videoUrl || null,
     scheduledAt: body.scheduledAt || null,
     sentToWhatsapp: false,
@@ -797,6 +803,23 @@ app.post('/api/upload', authMiddleware, requirePermission('ingest'), async (c) =
   const r2Key = file ? `${fileId}/${fileName.replace(/[^a-zA-Z0-9._-]/g, '_')}` : null;
   if (file && r2Key && fileArrayBuffer) await c.env.TELEIOS_MEDIA.put(r2Key, fileArrayBuffer, { httpMetadata: { contentType: mimeType } });
 
+  // Processamento e salvamento de Thumbnail opcional (gerado pelo cliente)
+  const thumbValue = form.get('thumbnail') || form.get('thumbFile');
+  const thumbFile = typeof thumbValue === 'string' || !thumbValue ? null : (thumbValue as unknown as File);
+  let thumbnailKey: string | null = null;
+  if (thumbFile) {
+    try {
+      const thumbBuffer = await thumbFile.arrayBuffer();
+      const sanitizedBase = fileName.replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9._-]/g, '_');
+      thumbnailKey = `${fileId}/thumb_${sanitizedBase}.webp`;
+      await c.env.TELEIOS_MEDIA.put(thumbnailKey, thumbBuffer, {
+        httpMetadata: { contentType: thumbFile.type || 'image/webp' },
+      });
+    } catch (tErr) {
+      console.warn('[Thumbnail Upload Warning]', tErr);
+    }
+  }
+
   const currentConfig = await getJson<any>(c.env.TELEIOS_KV!, KEY.config, {});
   const drive = currentConfig.googleDrive;
   let driveFileId: string | null = null;
@@ -834,6 +857,8 @@ app.post('/api/upload', authMiddleware, requirePermission('ingest'), async (c) =
     category,
     driveFileId: driveFileId || r2Key,
     driveWebViewLink: driveWebViewLink || (r2Key ? new URL(`/api/media/${fileId}`, c.req.url).toString() : null),
+    thumbnailKey,
+    thumbnailUrl: thumbnailKey ? new URL(`/api/media/${fileId}?variant=thumbnail`, c.req.url).toString() : null,
     driveFolderPath,
     status: category === 'ESTUDO' ? 'PENDING' : 'COMPLETED',
     createdAt: now(),

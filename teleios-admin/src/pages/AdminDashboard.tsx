@@ -3,21 +3,17 @@ import { useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Menu,
-  ChevronRight,
   LogOut,
   ShieldCheck,
-  RefreshCw,
 } from 'lucide-react';
 import { Sidebar } from '../components/layout/Sidebar.tsx';
 import { EstudosDevocionaisManager } from '../components/views/EstudosDevocionaisManager.tsx';
 import { UsuariosView } from '../components/views/UsuariosView.tsx';
 import { ControleFinanceiroView } from '../components/views/ControleFinanceiroView.tsx';
-import { InscricoesView } from '../components/views/InscricoesView.tsx';
 import { IntegracoesView } from '../components/views/IntegracoesView.tsx';
 import { SystemStatus, MediaFile, VideoMetadata, AuthSession, PermissionModule } from '../types/index.ts';
 import { loadSession, clearSession, hasPermission } from '../services/security.service.ts';
 import { safeApiFetch } from '../utils/contentSanitizer.ts';
-import { PwaInstallButton } from '../components/common/PwaInstallButton.tsx';
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
@@ -122,13 +118,13 @@ export default function AdminDashboard() {
 
       {/* Main Workspace */}
       <div className="flex-1 lg:pl-72 flex flex-col min-h-screen min-w-0 w-full overflow-x-hidden">
-        {/* Top Header Bar — Dark */}
+        {/* Top Header Bar — Limpo: Apenas Nome da Página e Botão de Sair */}
         <header
-          className="sticky top-0 z-30 border-b px-3 sm:px-6 lg:px-8 py-2.5 sm:py-3 flex items-center justify-between gap-2 sm:gap-4"
+          className="sticky top-0 z-30 border-b px-3 sm:px-6 lg:px-8 py-2.5 sm:py-3.5 flex items-center justify-between gap-4"
           style={{ backgroundColor: '#111827', borderColor: '#374151' }}
         >
-          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-            {/* Mobile Hamburger */}
+          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+            {/* Mobile Hamburger (visível somente em telas pequenas para navegação) */}
             <button
               onClick={() => setMobileSidebarOpen(true)}
               className="p-2 rounded-lg lg:hidden transition-colors cursor-pointer shrink-0"
@@ -139,47 +135,21 @@ export default function AdminDashboard() {
               <Menu className="w-5 h-5" />
             </button>
 
-            {/* Breadcrumb */}
-            <div className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm min-w-0">
-              <span className="shrink-0" style={{ color: '#9CA3AF' }}>Admin</span>
-              <ChevronRight className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" style={{ color: '#4B5563' }} />
-              <span className="font-bold truncate" style={{ color: '#F9FAFB' }}>
-                {tabLabels[activeTab] || 'Workspace'}
-              </span>
-            </div>
+            {/* Nome da Página */}
+            <h1 className="text-base sm:text-lg font-bold tracking-tight text-white truncate">
+              {tabLabels[activeTab] || 'Workspace'}
+            </h1>
           </div>
 
-          {/* Right: Status + Actions */}
-          <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
-            {/* PWA Install Button */}
-            <PwaInstallButton variant="header" />
-
-            {/* User badge */}
-            <div className="hidden sm:flex items-center gap-2">
-              <span className="text-sm font-medium truncate max-w-[140px]" style={{ color: '#F9FAFB' }}>
-                {session.user.displayName}
-              </span>
-            </div>
-
-            {/* Refresh */}
-            <button
-              onClick={fetchAllData}
-              disabled={isLoading}
-              className="p-2 rounded-lg transition-colors cursor-pointer hover:bg-[#1F2937] text-[#9CA3AF] hover:text-white shrink-0"
-              title="Atualizar dados"
-            >
-              <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
-            </button>
-
-            {/* Logout */}
-            <button
-              onClick={handleLogout}
-              className="p-2 rounded-lg transition-colors cursor-pointer hover:bg-red-500/10 hover:text-red-500 text-[#9CA3AF] shrink-0"
-              title="Encerrar sessão"
-            >
-              <LogOut className="w-4 h-4" />
-            </button>
-          </div>
+          {/* Botão de Sair */}
+          <button
+            onClick={handleLogout}
+            className="flex items-center gap-1.5 sm:gap-2 px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl text-xs sm:text-sm font-semibold text-red-400 hover:text-red-300 bg-red-950/40 hover:bg-red-900/60 border border-red-800/40 transition-colors cursor-pointer shrink-0 shadow-sm"
+            title="Encerrar sessão"
+          >
+            <LogOut className="w-4 h-4" />
+            <span>Sair</span>
+          </button>
         </header>
 
         {/* View Container */}

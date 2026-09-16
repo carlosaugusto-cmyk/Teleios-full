@@ -37,6 +37,7 @@ export interface Study {
   summary: string | null;
   topic: string | null;
   generatedImgUrl: string | null;
+  thumbnailUrl?: string | null;
   aiImageUrl?: string | null;
   videoUrl?: string | null;
   scheduledAt: string | null;
