@@ -14,6 +14,7 @@ import {
   File,
 } from 'lucide-react';
 import { renderAsync } from 'docx-preview';
+import { resolveDocumentUrl } from '../lib/api';
 
 interface DocumentViewerProps {
   documentUrl: string;
@@ -29,6 +30,8 @@ export default function DocumentViewer({
   documentType,
   documentSize,
 }: DocumentViewerProps) {
+  const fullDocUrl = resolveDocumentUrl(documentUrl);
+
   // Determinar o formato do documento
   const detectedType = (() => {
     if (documentType) {
@@ -70,8 +73,8 @@ export default function DocumentViewer({
 
     const loadDocx = async () => {
       try {
-        const response = await fetch(documentUrl);
-        if (!response.ok) throw new Error('Falha ao baixar arquivo DOCX.');
+        const response = await fetch(fullDocUrl);
+        if (!response.ok) throw new Error(`Falha ao baixar arquivo DOCX (HTTP ${response.status}).`);
         const buffer = await response.arrayBuffer();
 
         if (isMounted && docxContainerRef.current) {
@@ -99,7 +102,7 @@ export default function DocumentViewer({
     return () => {
       isMounted = false;
     };
-  }, [documentUrl, detectedType]);
+  }, [fullDocUrl, detectedType]);
 
   // ─── 2. RENDERIZADOR DE PDF (PDF.js com Fallback) ───────────────────────────
   useEffect(() => {
@@ -111,16 +114,31 @@ export default function DocumentViewer({
 
     const loadPdfDoc = async () => {
       try {
-        // Carrega PDF.js dinamicamente do CDN oficial para manter bundle leve e de alto desempenho
+        // Baixa o binário primeiro garantindo CORS e status
+        const response = await fetch(fullDocUrl);
+        if (!response.ok) throw new Error(`Falha ao baixar arquivo PDF (HTTP ${response.status}).`);
+        const buffer = await response.arrayBuffer();
+
+        // Carrega PDF.js dinamicamente do CDN oficial para manter bundle leve
         const dynamicImport = new Function('u', 'return import(u)');
         const pdfjsLib: any = await dynamicImport(
           'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.min.mjs'
         );
-        pdfjsLib.GlobalWorkerOptions.workerSrc =
-          'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.worker.min.mjs';
+
+        // Configuração do Worker via Blob para contornar restrição de CORS em browsers modernos
+        try {
+          const workerResp = await fetch('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.worker.min.mjs');
+          if (workerResp.ok) {
+            const workerCode = await workerResp.text();
+            const blob = new Blob([workerCode], { type: 'application/javascript' });
+            pdfjsLib.GlobalWorkerOptions.workerSrc = URL.createObjectURL(blob);
+          }
+        } catch {
+          pdfjsLib.GlobalWorkerOptions.workerSrc = '';
+        }
 
         const loadingTask = pdfjsLib.getDocument({
-          url: documentUrl,
+          data: buffer,
           cMapUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/cmaps/',
           cMapPacked: true,
         });
@@ -133,9 +151,9 @@ export default function DocumentViewer({
           setLoading(false);
         }
       } catch (err: any) {
-        console.warn('[PDF.js Canvas Error - Ativando Fallback]', err);
+        console.warn('[PDF.js Canvas Error - Ativando Google Docs Fallback]', err);
         if (isMounted) {
-          // Se falhar o carregamento do worker/canvas (ex: offline ou CORS), ativa fallback nativo
+          // Se falhar o carregamento do worker/canvas, ativa Google Docs Viewer fallback
           setUseIframeFallback(true);
           setLoading(false);
         }
@@ -147,7 +165,7 @@ export default function DocumentViewer({
     return () => {
       isMounted = false;
     };
-  }, [documentUrl, detectedType]);
+  }, [fullDocUrl, detectedType]);
 
   // Renderizar página atual do PDF no Canvas
   useEffect(() => {
@@ -298,9 +316,21 @@ export default function DocumentViewer({
             {isFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
           </button>
 
+          {/* Alternador de Modo para PDF (Canvas vs Google Docs Viewer) */}
+          {detectedType === 'pdf' && (
+            <button
+              type="button"
+              onClick={() => setUseIframeFallback((prev) => !prev)}
+              className="px-2 py-1 bg-[#0F172A] border border-gray-700 hover:border-gray-500 rounded-lg text-gray-300 hover:text-white text-[11px] font-medium transition-colors cursor-pointer"
+              title={useIframeFallback ? 'Alternar para Leitor Canvas Nativo' : 'Alternar para Leitor Google Docs'}
+            >
+              {useIframeFallback ? 'Modo Canvas' : 'Modo Docs'}
+            </button>
+          )}
+
           {/* Download / Abrir Original */}
           <a
-            href={documentUrl}
+            href={fullDocUrl}
             target="_blank"
             rel="noopener noreferrer"
             download={displayName}
@@ -329,15 +359,24 @@ export default function DocumentViewer({
             <AlertCircle className="w-10 h-10 text-red-400 mx-auto" />
             <p className="text-sm font-semibold text-white">Falha ao abrir documento no visor integrado</p>
             <p className="text-xs text-gray-400">{error}</p>
-            <div className="pt-2 flex items-center justify-center gap-2">
+            <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-2">
               <a
-                href={documentUrl}
+                href={`https://docs.google.com/viewer?url=${encodeURIComponent(fullDocUrl)}&embedded=true`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-xl transition-all flex items-center gap-2 shadow-md"
+                className="w-full sm:w-auto px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 shadow-md"
               >
                 <ExternalLink size={14} />
-                <span>Abrir no Leitor do Sistema</span>
+                <span>Abrir no Google Docs</span>
+              </a>
+              <a
+                href={fullDocUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full sm:w-auto px-4 py-2 bg-[#0F172A] hover:bg-gray-800 border border-gray-700 text-gray-300 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2"
+              >
+                <Download size={14} />
+                <span>Baixar Original</span>
               </a>
             </div>
           </div>
@@ -361,9 +400,9 @@ export default function DocumentViewer({
           <>
             {useIframeFallback ? (
               <iframe
-                src={documentUrl}
+                src={`https://docs.google.com/viewer?url=${encodeURIComponent(fullDocUrl)}&embedded=true`}
                 title={displayName}
-                className="w-full h-full border-none rounded-lg"
+                className="w-full h-full border-none rounded-lg bg-white"
                 style={{ minHeight: isFullscreen ? 'calc(100dvh - 60px)' : '520px' }}
               />
             ) : (
@@ -393,7 +432,7 @@ export default function DocumentViewer({
             </div>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-2 pt-2">
               <a
-                href={`https://docs.google.com/viewer?url=${encodeURIComponent(documentUrl)}&embedded=true`}
+                href={`https://docs.google.com/viewer?url=${encodeURIComponent(fullDocUrl)}&embedded=true`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="w-full sm:w-auto px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-xl flex items-center justify-center gap-1.5"
@@ -402,7 +441,7 @@ export default function DocumentViewer({
                 <span>Visualizador Online</span>
               </a>
               <a
-                href={documentUrl}
+                href={fullDocUrl}
                 download={displayName}
                 className="w-full sm:w-auto px-4 py-2 bg-[#0F172A] hover:bg-[#1E293B] border border-gray-700 text-gray-300 text-xs font-semibold rounded-xl flex items-center justify-center gap-1.5"
               >

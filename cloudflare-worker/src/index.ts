@@ -252,6 +252,72 @@ async function bootstrap(env: Bindings) {
       },
     ]);
   }
+
+  // Auto-migração e cura de documentos em estudos salvos no KV
+  try {
+    const allFiles = await getJson<MediaFile[]>(env.TELEIOS_KV, KEY.files, []);
+    if (allFiles && allFiles.length > 0 && currentStudies && currentStudies.length > 0) {
+      let modified = false;
+      const healedStudies = currentStudies.map((s: any) => {
+        const enriched = enrichStudyWithDocument({ ...s, documentUrl: null }, allFiles);
+        if (enriched.documentUrl && (s.documentUrl !== enriched.documentUrl || s.documentName !== enriched.documentName)) {
+          modified = true;
+          return enriched;
+        }
+        return s;
+      });
+      if (modified) {
+        await putJson(env.TELEIOS_KV, KEY.studies, healedStudies);
+      }
+    }
+  } catch (err) {
+    console.warn('[AutoHeal Documents Warning]', err);
+  }
+}
+
+function enrichStudyWithDocument(s: any, files: MediaFile[]): any {
+  let docUrl = s.documentUrl || null;
+  let docName = s.documentName || null;
+  let docType = s.documentType || null;
+  let docSize = s.documentSize || null;
+
+  if (!docUrl || !docName || docName === 'Arquivo') {
+    const fullText = `${s.content || ''} ${s.rawContent || ''}`;
+    const docMatch = fullText.match(/Documento anexado:\s*([^\r\n]+)/i);
+    const targetDocName = docMatch ? docMatch[1].trim() : null;
+
+    let matchedFile: MediaFile | undefined;
+    if (targetDocName) {
+      const cleanTarget = targetDocName.toLowerCase().replace(/[_\s-]+/g, ' ').trim();
+      matchedFile = files.find((f) => {
+        const cleanFile = (f.originalName || '').toLowerCase().replace(/[_\s-]+/g, ' ').trim();
+        return cleanFile === cleanTarget || (f.originalName && f.originalName.toLowerCase() === targetDocName.toLowerCase());
+      });
+    }
+
+    if (!matchedFile) {
+      matchedFile = files.find((f) => {
+        if (f.category === 'DOCUMENTO' && Math.abs(new Date(f.createdAt).getTime() - new Date(s.createdAt).getTime()) < 60000) return true;
+        return false;
+      });
+    }
+
+    if (matchedFile) {
+      docUrl = matchedFile.driveWebViewLink || (matchedFile.r2Key ? `/api/media/${matchedFile.id}` : (matchedFile.id ? `/api/media/${matchedFile.id}` : null));
+      docName = matchedFile.originalName;
+      docSize = matchedFile.size;
+      const ext = (matchedFile.originalName || '').split('.').pop()?.toLowerCase() || '';
+      docType = ext === 'pdf' ? 'pdf' : (ext === 'docx' ? 'docx' : (ext === 'doc' ? 'doc' : 'documento'));
+    }
+  }
+
+  return {
+    ...s,
+    documentUrl: docUrl,
+    documentName: docName,
+    documentType: docType,
+    documentSize: docSize,
+  };
 }
 
 // ─── Health & Auth ────────────────────────────────────────────────────────────
@@ -294,8 +360,9 @@ app.get('/api/estudos', async (c) => {
   const files = Array.isArray(filesRaw) ? filesRaw : [];
   const videos = Array.isArray(videosRaw) ? videosRaw : [];
 
-  let data = studies.map((s) => {
-    const file = files.find((f) => f.id === s.fileId);
+  let data = studies.map((rawS) => {
+    const s = enrichStudyWithDocument(rawS, files);
+    const file = files.find((f) => f.id === s.fileId) || files.find((f) => f.originalName === s.documentName);
     const status = s.status || (s.published === false ? 'RASCUNHO' : 'PUBLICADO');
     const isPublished = status === 'PUBLICADO' || s.published === true;
 
@@ -354,8 +421,11 @@ app.get('/api/estudos', async (c) => {
         f.mimeType?.startsWith('image/') ||
         /\.(jpe?g|png|gif|webp|svg|bmp|avif)$/i.test(f.originalName || '');
       const isAud = f.mimeType?.startsWith('audio/') || f.category === 'APOIO';
-      const type = isImg ? 'Imagem' : isAud ? 'Áudio' : (f.category === 'PROJETO' ? 'Documento' : 'Estudo');
+      const ext = (f.originalName || '').split('.').pop()?.toLowerCase() || '';
+      const isDoc = f.category === 'DOCUMENTO' || ext === 'pdf' || ext === 'docx' || ext === 'doc';
+      const type = isImg ? 'Imagem' : isAud ? 'Áudio' : isDoc ? 'Documento' : (f.category === 'PROJETO' ? 'Documento' : 'Estudo');
       const imgUrl = isImg ? (f.driveWebViewLink || (f.r2Key ? `/api/media/${f.id}` : (f.id ? `/api/media/${f.id}` : ''))) : null;
+      const docUrl = isDoc ? (f.driveWebViewLink || (f.r2Key ? `/api/media/${f.id}` : (f.id ? `/api/media/${f.id}` : null))) : null;
 
       return {
         id: f.id,
@@ -369,6 +439,10 @@ app.get('/api/estudos', async (c) => {
         summary: isImg ? 'Foto / Imagem enviada' : `Arquivo enviado (${(f.size ? (f.size / 1024).toFixed(1) + ' KB' : '')})`,
         generatedImgUrl: imgUrl,
         aiImageUrl: imgUrl,
+        documentUrl: docUrl,
+        documentName: f.originalName,
+        documentType: ext === 'pdf' ? 'pdf' : (ext === 'docx' ? 'docx' : (ext === 'doc' ? 'doc' : 'documento')),
+        documentSize: f.size,
         mediaFile: f,
         scheduledAt: null,
         sentToWhatsapp: false,
@@ -405,7 +479,10 @@ app.get('/api/estudos/:id', async (c) => {
   const files = Array.isArray(filesRaw) ? filesRaw : [];
 
   let s = studies.find((item) => item.id === idParam || item.slug === idParam);
-  let file = s ? files.find((f) => f.id === s.fileId) : undefined;
+  if (s) {
+    s = enrichStudyWithDocument(s, files);
+  }
+  let file = s ? (files.find((f) => f.id === s.fileId) || files.find((f) => f.originalName === s.documentName)) : undefined;
 
   if (!s) {
     const videosRaw = await getJson<any[]>(c.env.TELEIOS_KV!, KEY.videos, []);
@@ -443,8 +520,11 @@ app.get('/api/estudos/:id', async (c) => {
         f.mimeType?.startsWith('image/') ||
         /\.(jpe?g|png|gif|webp|svg|bmp|avif)$/i.test(f.originalName || '');
       const isAud = f.mimeType?.startsWith('audio/') || f.category === 'APOIO';
-      const type = isImg ? 'Imagem' : isAud ? 'Áudio' : (f.category === 'PROJETO' ? 'Documento' : 'Estudo');
+      const ext = (f.originalName || '').split('.').pop()?.toLowerCase() || '';
+      const isDoc = f.category === 'DOCUMENTO' || ext === 'pdf' || ext === 'docx' || ext === 'doc';
+      const type = isImg ? 'Imagem' : isAud ? 'Áudio' : isDoc ? 'Documento' : (f.category === 'PROJETO' ? 'Documento' : 'Estudo');
       const imgUrl = isImg ? (f.driveWebViewLink || (f.r2Key ? `/api/media/${f.id}` : (f.id ? `/api/media/${f.id}` : ''))) : null;
+      const docUrl = isDoc ? (f.driveWebViewLink || (f.r2Key ? `/api/media/${f.id}` : (f.id ? `/api/media/${f.id}` : null))) : null;
       const data = {
         id: f.id,
         fileId: f.id,
@@ -457,6 +537,10 @@ app.get('/api/estudos/:id', async (c) => {
         summary: isImg ? 'Foto / Imagem enviada' : `Arquivo enviado (${(f.size ? (f.size / 1024).toFixed(1) + ' KB' : '')})`,
         generatedImgUrl: imgUrl,
         aiImageUrl: imgUrl,
+        documentUrl: docUrl,
+        documentName: f.originalName,
+        documentType: ext === 'pdf' ? 'pdf' : (ext === 'docx' ? 'docx' : (ext === 'doc' ? 'doc' : 'documento')),
+        documentSize: f.size,
         mediaFile: f,
         scheduledAt: null,
         createdAt: f.createdAt || now(),

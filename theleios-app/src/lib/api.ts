@@ -111,19 +111,78 @@ export interface DonationItem {
   createdAt?: string;
 }
 
+export function resolveDocumentUrl(url?: string | null): string {
+  if (!url) return '';
+  const trimmed = url.trim();
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+    return trimmed;
+  }
+  if (trimmed.startsWith('/')) {
+    return `${PRODUCTION_API_URL}${trimmed}`;
+  }
+  return `${PRODUCTION_API_URL}/${trimmed}`;
+}
+
+export function normalizeStudy(s: Study): Study {
+  let docUrl = s.documentUrl || null;
+  let docName = s.documentName || null;
+  let docType = s.documentType || null;
+  let docSize = s.documentSize || null;
+
+  // Fallback se não vier documentUrl explicitamente mas estiver no mediaFile
+  if (!docUrl && s.mediaFile) {
+    if (s.mediaFile.category === 'DOCUMENTO' || s.mediaFile.originalName?.match(/\.(pdf|docx?)$/i)) {
+      docUrl = s.mediaFile.driveWebViewLink || (s.mediaFile.r2Key ? `/api/media/${s.mediaFile.id}` : `/api/media/${s.mediaFile.id}`);
+      docName = docName || s.mediaFile.originalName;
+      docSize = docSize || s.mediaFile.size;
+    }
+  }
+
+  // Fallback se houver indicação de anexo no texto
+  if (!docUrl) {
+    const text = `${s.content || ''} ${s.rawContent || ''}`;
+    const match = text.match(/Documento anexado:\s*([^\r\n]+)/i);
+    if (match) {
+      const detectedName = match[1].trim();
+      docName = docName || detectedName;
+      if (s.fileId && !s.fileId.startsWith('text_')) {
+        docUrl = `/api/media/${s.fileId}`;
+      }
+    }
+  }
+
+  if (docUrl) {
+    docUrl = resolveDocumentUrl(docUrl);
+    if (!docType && docName) {
+      const ext = docName.split('.').pop()?.toLowerCase();
+      if (ext === 'pdf' || ext === 'docx' || ext === 'doc') {
+        docType = ext;
+      }
+    }
+  }
+
+  return {
+    ...s,
+    documentUrl: docUrl,
+    documentName: docName,
+    documentType: (docType as any) || (docUrl ? 'pdf' : null),
+    documentSize: docSize,
+  };
+}
+
 // ─── Funções do Theleios-app ─────────────────────────────────────────────────
 
 /** Lista todos os estudos/devocionais publicados (endpoint público, sem auth) */
 export async function fetchEstudos(): Promise<Study[]> {
   const res = await request<Study[]>('/api/estudos');
-  if (res.success && Array.isArray(res.data)) return res.data;
+  if (res.success && Array.isArray(res.data)) return res.data.map(normalizeStudy);
   return [];
 }
 
 /** Obtém um estudo/devocional por ID (endpoint público, sem auth) */
 export async function fetchEstudo(id: string): Promise<Study | null> {
   const res = await request<Study>(`/api/estudos/${encodeURIComponent(id)}`);
-  if (res.success && res.data) return res.data;
+  if (res.success && res.data) return normalizeStudy(res.data);
   return null;
 }
 
