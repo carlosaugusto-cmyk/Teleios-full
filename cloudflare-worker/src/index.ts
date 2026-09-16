@@ -98,7 +98,11 @@ app.use('*', async (c, next) => {
 
   c.header('Access-Control-Allow-Origin', allowOrigin);
   c.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
-  c.header('Access-Control-Allow-Headers', 'Authorization, Content-Type, X-Agent-Secret, Accept, Origin, X-Requested-With');
+  const requestedHeaders = c.req.header('Access-Control-Request-Headers');
+  const allowHeaders = requestedHeaders
+    ? `Authorization, Content-Type, X-Agent-Secret, Accept, Origin, X-Requested-With, X-App-Admin-Phone, x-app-admin-phone, X-App-Admin-User, x-app-admin-user, ${requestedHeaders}`
+    : 'Authorization, Content-Type, X-Agent-Secret, Accept, Origin, X-Requested-With, X-App-Admin-Phone, x-app-admin-phone, X-App-Admin-User, x-app-admin-user, *';
+  c.header('Access-Control-Allow-Headers', allowHeaders);
   c.header('Access-Control-Allow-Credentials', 'true');
   c.header('Access-Control-Max-Age', '86400');
 
@@ -119,7 +123,7 @@ app.onError((err, c) => {
       'Access-Control-Allow-Origin': origin,
       'Access-Control-Allow-Credentials': 'true',
       'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS, PATCH',
-      'Access-Control-Allow-Headers': 'Authorization, Content-Type, X-Agent-Secret, Accept, Origin, X-Requested-With',
+      'Access-Control-Allow-Headers': 'Authorization, Content-Type, X-Agent-Secret, Accept, Origin, X-Requested-With, X-App-Admin-Phone, x-app-admin-phone, X-App-Admin-User, x-app-admin-user, *',
     }
   );
 });
@@ -133,7 +137,7 @@ app.notFound((c) => {
       'Access-Control-Allow-Origin': origin,
       'Access-Control-Allow-Credentials': 'true',
       'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS, PATCH',
-      'Access-Control-Allow-Headers': 'Authorization, Content-Type, X-Agent-Secret, Accept, Origin, X-Requested-With',
+      'Access-Control-Allow-Headers': 'Authorization, Content-Type, X-Agent-Secret, Accept, Origin, X-Requested-With, X-App-Admin-Phone, x-app-admin-phone, X-App-Admin-User, x-app-admin-user, *',
     }
   );
 });
@@ -1736,40 +1740,225 @@ app.delete('/api/leads/:id', authMiddleware, async (c) => {
   return c.json({ success: true, message: 'Inscrição excluída com sucesso.' });
 });
 
-// ─── USUÁRIOS DO APP (CADASTRO & PERFIL) ─────────────────────────────────────
+// ─── USUÁRIOS DO APP (CADASTRO, LOGIN & PERFIL) ──────────────────────────────
 
+// Registro de novo usuário do App com Nome, Username, Email, Senha e Telefone
+app.post('/api/app/register', async (c) => {
+  await bootstrap(c.env);
+  const body: any = await c.req.json().catch(() => ({}));
+  const name = String(body.name || '').trim();
+  const rawUsername = String(body.username || '').trim().replace(/^@/, '').toLowerCase();
+  const email = String(body.email || '').trim().toLowerCase();
+  const phone = String(body.phone || '').trim();
+  const password = String(body.password || '').trim();
+  const church = String(body.church || '').trim();
+
+  if (!name || name.length < 2) {
+    return c.json({ success: false, error: 'Nome completo obrigatório (mínimo 2 letras).' }, 400);
+  }
+
+  // Username: apenas letras, números, ponto e underline
+  const username = rawUsername.replace(/[^a-z0-9_.]/g, '');
+  if (!username || username.length < 3) {
+    return c.json({ success: false, error: 'Nome de usuário inválido (mínimo 3 caracteres alfanuméricos).' }, 400);
+  }
+
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return c.json({ success: false, error: 'E-mail em formato inválido.' }, 400);
+  }
+
+  if (!password || password.length < 6) {
+    return c.json({ success: false, error: 'A senha deve ter no mínimo 6 caracteres.' }, 400);
+  }
+
+  const users = await getJson<any[]>(c.env.TELEIOS_KV!, KEY.appUsers, []);
+
+  // Verificar duplicidade de username
+  const existingUsername = users.find((u) => (u.username || '').toLowerCase() === username);
+  if (existingUsername) {
+    return c.json({ success: false, error: 'Este nome de usuário já está em uso.' }, 409);
+  }
+
+  // Verificar duplicidade de email
+  if (email) {
+    const existingEmail = users.find((u) => (u.email || '').toLowerCase() === email);
+    if (existingEmail) {
+      return c.json({ success: false, error: 'Este e-mail já está cadastrado.' }, 409);
+    }
+  }
+
+  // Verificar duplicidade de telefone
+  const cleanPhone = phone.replace(/\D/g, '');
+  if (cleanPhone.length >= 8) {
+    const existingPhone = users.find((u) => (u.phone || '').replace(/\D/g, '') === cleanPhone);
+    if (existingPhone) {
+      return c.json({ success: false, error: 'Este telefone já está cadastrado. Faça login para continuar.' }, 409);
+    }
+  }
+
+  const passwordHash = await sha256(password);
+  const newUserId = id('user');
+
+  const userData = {
+    id: newUserId,
+    name,
+    username,
+    email: email || null,
+    passwordHash,
+    phone: phone || '',
+    church: church || '',
+    birthDate: body.birthDate || null,
+    gender: body.gender || null,
+    maritalStatus: body.maritalStatus || null,
+    ministry: body.ministry || null,
+    city: String(body.city || '').trim(),
+    state: String(body.state || '').trim(),
+    photoUrl: body.photoUrl || null,
+    status: 'Ativo',
+    isBaptized: Boolean(body.isBaptized),
+    timeAsBeliever: String(body.timeAsBeliever || ''),
+    inDiscipleship: Boolean(body.inDiscipleship),
+    disciplerName: String(body.disciplerName || ''),
+    notes: '',
+    role: 'user',
+    isAdmin: false,
+    currentDevocional: null,
+    currentEstudo: null,
+    lastActivityAt: now(),
+    createdAt: now(),
+    updatedAt: now(),
+  };
+
+  users.unshift(userData);
+  await putJson(c.env.TELEIOS_KV!, KEY.appUsers, users);
+
+  const { passwordHash: _, ...safeProfile } = userData;
+  return c.json({ success: true, user: safeProfile, data: safeProfile });
+});
+
+// Login do App: aceita E-mail, Nome de Usuário ou Telefone + Senha
+app.post('/api/app/login', async (c) => {
+  await bootstrap(c.env);
+  const body: any = await c.req.json().catch(() => ({}));
+  const identifier = String(body.identifier || body.username || body.email || body.phone || '').trim();
+  const password = String(body.password || '').trim();
+
+  if (!identifier) {
+    return c.json({ success: false, error: 'Informe e-mail, nome de usuário ou telefone.' }, 400);
+  }
+
+  const users = await getJson<any[]>(c.env.TELEIOS_KV!, KEY.appUsers, []);
+  const cleanId = identifier.toLowerCase().replace(/^@/, '');
+  const cleanDigits = identifier.replace(/\D/g, '');
+
+  const user = users.find((u) => {
+    const uName = (u.username || '').toLowerCase().replace(/^@/, '');
+    const uEmail = (u.email || '').toLowerCase();
+    const uPhone = (u.phone || '').replace(/\D/g, '');
+
+    if (uName && uName === cleanId) return true;
+    if (uEmail && uEmail === cleanId) return true;
+    if (cleanDigits.length >= 8 && uPhone && uPhone === cleanDigits) return true;
+    return false;
+  });
+
+  if (!user) {
+    return c.json({ success: false, error: 'Usuário não encontrado.' }, 404);
+  }
+
+  if (user.status === 'Inativo') {
+    return c.json({ success: false, error: 'Conta desativada. Entre em contato com a administração.' }, 403);
+  }
+
+  // Validação da senha
+  if (user.passwordHash) {
+    if (!password) {
+      return c.json({ success: false, error: 'Senha obrigatória.' }, 400);
+    }
+    const hash = await sha256(password);
+    if (hash !== user.passwordHash) {
+      return c.json({ success: false, error: 'Senha incorreta.' }, 401);
+    }
+  } else if (password) {
+    // Usuário pré-existente sem senha: salva senha no primeiro login com senha
+    user.passwordHash = await sha256(password);
+    user.updatedAt = now();
+  }
+
+  user.lastActivityAt = now();
+  await putJson(c.env.TELEIOS_KV!, KEY.appUsers, users);
+
+  const { passwordHash: _, ...safeProfile } = user;
+  return c.json({
+    success: true,
+    user: {
+      ...safeProfile,
+      role: user.role || (user.isAdmin ? 'admin' : 'user'),
+      isAdmin: Boolean(user.isAdmin || user.role === 'admin' || user.role === 'superadmin'),
+    },
+    data: {
+      ...safeProfile,
+      role: user.role || (user.isAdmin ? 'admin' : 'user'),
+      isAdmin: Boolean(user.isAdmin || user.role === 'admin' || user.role === 'superadmin'),
+    },
+  });
+});
+
+// Atualizar ou criar perfil completo de usuário
 app.post('/api/app/profile', async (c) => {
   await bootstrap(c.env);
   const body: any = await c.req.json().catch(() => ({}));
   const name = String(body.name || '').trim();
   const phone = String(body.phone || '').trim().replace(/[^0-9+() -]/g, '');
+  const username = body.username ? String(body.username).trim().replace(/^@/, '').toLowerCase().replace(/[^a-z0-9_.]/g, '') : undefined;
+  const email = body.email ? String(body.email).trim().toLowerCase() : undefined;
 
   if (!name || name.length < 2) {
     return c.json({ success: false, error: 'Nome completo obrigatório.' }, 400);
   }
-  if (!phone || phone.replace(/\D/g, '').length < 8) {
-    return c.json({ success: false, error: 'Telefone com DDD obrigatório.' }, 400);
-  }
 
   const users = await getJson<any[]>(c.env.TELEIOS_KV!, KEY.appUsers, []);
   const cleanPhone = phone.replace(/\D/g, '');
+  const cleanUsername = username ? username.replace(/^@/, '').toLowerCase() : '';
 
-  let userIdx = users.findIndex((u) => (u.phone || '').replace(/\D/g, '') === cleanPhone);
+  let userIdx = -1;
+  if (body.id) {
+    userIdx = users.findIndex((u) => u.id === body.id);
+  }
+  if (userIdx === -1 && cleanPhone) {
+    userIdx = users.findIndex((u) => (u.phone || '').replace(/\D/g, '') === cleanPhone);
+  }
+  if (userIdx === -1 && cleanUsername) {
+    userIdx = users.findIndex((u) => (u.username || '').toLowerCase() === cleanUsername);
+  }
+
+  // Hash de senha se o usuário enviou alteração de senha
+  let passwordHash = userIdx >= 0 ? users[userIdx].passwordHash : undefined;
+  if (body.password && String(body.password).trim().length >= 6) {
+    passwordHash = await sha256(String(body.password).trim());
+  }
 
   const userData = {
     id: userIdx >= 0 ? users[userIdx].id : id('user'),
     name,
-    phone,
-    church: String(body.church || '').trim(),
-    city: String(body.city || '').trim(),
-    state: String(body.state || '').trim(),
+    username: username !== undefined ? username : (userIdx >= 0 ? users[userIdx].username : null),
+    email: email !== undefined ? email : (userIdx >= 0 ? users[userIdx].email : null),
+    passwordHash,
+    phone: phone || (userIdx >= 0 ? users[userIdx].phone : ''),
+    church: String(body.church || (userIdx >= 0 ? users[userIdx].church : '')).trim(),
+    birthDate: body.birthDate !== undefined ? body.birthDate : (userIdx >= 0 ? users[userIdx].birthDate : null),
+    gender: body.gender !== undefined ? body.gender : (userIdx >= 0 ? users[userIdx].gender : null),
+    maritalStatus: body.maritalStatus !== undefined ? body.maritalStatus : (userIdx >= 0 ? users[userIdx].maritalStatus : null),
+    ministry: body.ministry !== undefined ? body.ministry : (userIdx >= 0 ? users[userIdx].ministry : null),
+    city: String(body.city !== undefined ? body.city : (userIdx >= 0 ? users[userIdx].city : '')).trim(),
+    state: String(body.state !== undefined ? body.state : (userIdx >= 0 ? users[userIdx].state : '')).trim(),
     photoUrl: body.photoUrl || (userIdx >= 0 ? users[userIdx].photoUrl : null),
     status: (userIdx >= 0 ? users[userIdx].status : 'Ativo') || 'Ativo',
     isBaptized: body.isBaptized !== undefined ? Boolean(body.isBaptized) : (userIdx >= 0 ? users[userIdx].isBaptized : false),
     timeAsBeliever: body.timeAsBeliever !== undefined ? String(body.timeAsBeliever) : (userIdx >= 0 ? users[userIdx].timeAsBeliever : ''),
     inDiscipleship: body.inDiscipleship !== undefined ? Boolean(body.inDiscipleship) : (userIdx >= 0 ? users[userIdx].inDiscipleship : false),
     disciplerName: body.disciplerName !== undefined ? String(body.disciplerName) : (userIdx >= 0 ? users[userIdx].disciplerName : ''),
-    notes: userIdx >= 0 ? users[userIdx].notes : '',
+    notes: body.notes !== undefined ? body.notes : (userIdx >= 0 ? users[userIdx].notes : ''),
     role: userIdx >= 0 ? (users[userIdx].role || 'user') : (body.role || 'user'),
     isAdmin: userIdx >= 0 ? Boolean(users[userIdx].isAdmin || users[userIdx].role === 'admin') : Boolean(body.isAdmin || body.role === 'admin'),
     currentDevocional: body.currentDevocional || (userIdx >= 0 ? users[userIdx].currentDevocional : null),
@@ -1787,23 +1976,36 @@ app.post('/api/app/profile', async (c) => {
 
   await putJson(c.env.TELEIOS_KV!, KEY.appUsers, users);
 
-  return c.json({ success: true, data: userData });
+  const { passwordHash: _, ...safeProfile } = userData;
+  return c.json({ success: true, data: safeProfile });
 });
 
-// Buscar perfil de usuário por telefone ou userId
+// Buscar perfil de usuário por telefone, userId, username ou email
 app.get('/api/app/profile', async (c) => {
   await bootstrap(c.env);
   const phone = c.req.query('phone');
   const userId = c.req.query('userId');
+  const username = c.req.query('username');
+  const email = c.req.query('email');
 
-  if (!phone && !userId) {
-    return c.json({ success: false, error: 'Informe telefone ou userId para busca.' }, 400);
+  if (!phone && !userId && !username && !email) {
+    return c.json({ success: false, error: 'Informe telefone, userId, username ou email para busca.' }, 400);
   }
 
   const users = await getJson<any[]>(c.env.TELEIOS_KV!, KEY.appUsers, []);
-  let user = null;
+  let user: any = null;
 
-  if (phone) {
+  if (username) {
+    const cleanU = username.trim().toLowerCase().replace(/^@/, '');
+    user = users.find((u) => (u.username || '').toLowerCase().replace(/^@/, '') === cleanU);
+  }
+
+  if (!user && email) {
+    const cleanE = email.trim().toLowerCase();
+    user = users.find((u) => (u.email || '').toLowerCase() === cleanE);
+  }
+
+  if (!user && phone) {
     const cleanPhone = phone.replace(/\D/g, '');
     user = users.find((u) => (u.phone || '').replace(/\D/g, '') === cleanPhone);
 
@@ -1825,7 +2027,7 @@ app.get('/api/app/profile', async (c) => {
         };
       }
     }
-  } else if (userId) {
+  } else if (!user && userId) {
     user = users.find((u) => u.id === userId);
   }
 
@@ -1833,8 +2035,9 @@ app.get('/api/app/profile', async (c) => {
     return c.json({ success: false, error: 'Usuário não encontrado.' }, 404);
   }
 
+  const { passwordHash: _, ...safeUser } = user;
   const enrichedUser = {
-    ...user,
+    ...safeUser,
     role: user.role || (user.isAdmin ? 'admin' : 'user'),
     isAdmin: Boolean(user.isAdmin || user.role === 'admin' || user.role === 'superadmin'),
   };
@@ -1966,6 +2169,12 @@ app.put('/api/app/users/:id', authMiddleware, async (c) => {
     appUsers[idx] = {
       ...appUsers[idx],
       name: body.name !== undefined ? body.name : appUsers[idx].name,
+      username: body.username !== undefined ? String(body.username).replace(/^@/, '').toLowerCase().trim() : appUsers[idx].username,
+      email: body.email !== undefined ? String(body.email).toLowerCase().trim() : appUsers[idx].email,
+      birthDate: body.birthDate !== undefined ? body.birthDate : appUsers[idx].birthDate,
+      gender: body.gender !== undefined ? body.gender : appUsers[idx].gender,
+      maritalStatus: body.maritalStatus !== undefined ? body.maritalStatus : appUsers[idx].maritalStatus,
+      ministry: body.ministry !== undefined ? body.ministry : appUsers[idx].ministry,
       church: body.church !== undefined ? body.church : appUsers[idx].church,
       city: body.city !== undefined ? body.city : appUsers[idx].city,
       state: body.state !== undefined ? body.state : appUsers[idx].state,
@@ -1982,7 +2191,8 @@ app.put('/api/app/users/:id', authMiddleware, async (c) => {
   }
 
   await putJson(c.env.TELEIOS_KV!, KEY.appUsers, appUsers);
-  return c.json({ success: true, data: appUsers[idx], message: 'Usuário atualizado com sucesso.' });
+  const { passwordHash: _, ...safeUpdated } = appUsers[idx];
+  return c.json({ success: true, data: safeUpdated, message: 'Usuário atualizado com sucesso.' });
 });
 
 // ─── ORAÇÕES DO APP ─────────────────────────────────────────────────────────

@@ -2,6 +2,7 @@
  * API wrapper — todas as chamadas ao Worker existente.
  * Não cria endpoints novos. Apenas consome os públicos mapeados.
  */
+import { createImageThumbnail, optimizeImage } from './imageOptimizer';
 
 const PRODUCTION_API_URL = 'https://teleios-api-worker.ca88321499.workers.dev';
 const BASE_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? PRODUCTION_API_URL : '');
@@ -73,8 +74,17 @@ export interface PixConfig {
 export interface UserProfile {
   id?: string;
   name: string;
+  username?: string | null;
+  email?: string | null;
+  password?: string;
   phone: string;
   church?: string;
+  birthDate?: string | null;
+  gender?: string | null;
+  maritalStatus?: string | null;
+  ministry?: string | null;
+  city?: string;
+  state?: string;
   photoUrl?: string | null;
   role?: 'admin' | 'user' | string;
   isAdmin?: boolean;
@@ -188,12 +198,32 @@ export async function fetchEstudo(id: string): Promise<Study | null> {
   return null;
 }
 
-/** Busca perfil do usuário no Cloudflare Worker pelo telefone */
-export async function fetchUserProfile(phone: string): Promise<UserProfile | null> {
-  const cleanPhone = phone.replace(/\D/g, '');
-  if (!cleanPhone) return null;
+/** Cadastro de novo usuário no App com email, username, senha e telefone */
+export async function registerAppUser(data: Partial<UserProfile> & { password?: string }): Promise<ApiResponse<UserProfile>> {
+  return request<UserProfile>('/api/app/register', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+/** Login de usuário no App por email, username ou telefone + senha */
+export async function loginAppUser(identifier: string, password?: string): Promise<ApiResponse<UserProfile>> {
+  return request<UserProfile>('/api/app/login', {
+    method: 'POST',
+    body: JSON.stringify({ identifier, password }),
+  });
+}
+
+/** Busca perfil do usuário no Cloudflare Worker por telefone, username ou email */
+export async function fetchUserProfile(phoneOrIdentifier: string): Promise<UserProfile | null> {
+  const query = phoneOrIdentifier.includes('@')
+    ? `email=${encodeURIComponent(phoneOrIdentifier.trim())}`
+    : phoneOrIdentifier.startsWith('@') || /^[a-zA-Z]/.test(phoneOrIdentifier)
+    ? `username=${encodeURIComponent(phoneOrIdentifier.replace(/^@/, '').trim())}`
+    : `phone=${encodeURIComponent(phoneOrIdentifier.replace(/\D/g, ''))}`;
+
   try {
-    const res = await request<UserProfile>(`/api/app/profile?phone=${encodeURIComponent(cleanPhone)}`);
+    const res = await request<UserProfile>(`/api/app/profile?${query}`);
     if (res.success && res.data) return res.data;
     return null;
   } catch {
@@ -202,7 +232,7 @@ export async function fetchUserProfile(phone: string): Promise<UserProfile | nul
 }
 
 /** Salva / atualiza perfil do usuário no Cloudflare Worker */
-export async function saveUserProfile(profile: UserProfile): Promise<ApiResponse<UserProfile>> {
+export async function saveUserProfile(profile: Partial<UserProfile>): Promise<ApiResponse<UserProfile>> {
   return request<UserProfile>('/api/app/profile', {
     method: 'POST',
     body: JSON.stringify(profile),
@@ -294,32 +324,57 @@ export async function healthCheck(): Promise<boolean> {
 /** Faz upload de documento ou imagem para o Worker com autorização de Admin */
 export async function uploadMediaFromApp(
   file: File,
-  adminPhone: string,
-  category: 'DOCUMENTO' | 'GALERIA' = 'DOCUMENTO'
-): Promise<{ url: string; id: string; originalName: string; size: number; ext: string } | null> {
+  adminPhone?: string,
+  category: 'DOCUMENTO' | 'GALERIA' = 'DOCUMENTO',
+  adminIdentifier?: string
+): Promise<{ url: string; thumbnailUrl?: string; id: string; originalName: string; size: number; ext: string } | null> {
   try {
+    const isImage = file.type.startsWith('image/');
+    let finalFile = file;
+    let thumbFile: File | null = null;
+
+    if (isImage) {
+      try {
+        const [opt, thumb] = await Promise.all([
+          optimizeImage(file),
+          createImageThumbnail(file, 500, 0.82),
+        ]);
+        finalFile = opt;
+        thumbFile = thumb;
+      } catch (imgErr) {
+        console.warn('[Image optimize warning]', imgErr);
+      }
+    }
+
     const formData = new FormData();
-    formData.append('file', file);
+    formData.append('file', finalFile);
     formData.append('fileName', file.name);
     formData.append('category', category);
+    if (thumbFile) {
+      formData.append('thumbnail', thumbFile);
+    }
+
+    const headers: Record<string, string> = {};
+    if (adminPhone) headers['X-App-Admin-Phone'] = adminPhone;
+    if (adminIdentifier) headers['X-App-Admin-User'] = adminIdentifier;
 
     const res = await fetch(`${BASE_URL}/api/upload`, {
       method: 'POST',
-      headers: {
-        'X-App-Admin-Phone': adminPhone,
-      },
+      headers,
       body: formData,
     });
 
     const json = await res.json();
     if (json.success && json.mediaFile) {
       const url = json.mediaFile.driveWebViewLink || (json.mediaFile.id ? `${BASE_URL}/api/media/${json.mediaFile.id}` : null);
+      const thumbUrl = json.mediaFile.thumbnailUrl || (json.mediaFile.id ? `${BASE_URL}/api/media/${json.mediaFile.id}?variant=thumbnail` : url);
       const ext = file.name.split('.').pop()?.toLowerCase() || '';
       return {
         url: url || '',
+        thumbnailUrl: thumbUrl || '',
         id: json.mediaFile.id,
         originalName: file.name,
-        size: file.size,
+        size: finalFile.size,
         ext,
       };
     }
@@ -331,13 +386,20 @@ export async function uploadMediaFromApp(
 }
 
 /** Cria novo estudo ou devocional a partir do App com autorização de Admin */
-export async function createStudyFromApp(payload: any, adminPhone: string): Promise<ApiResponse<Study>> {
+export async function createStudyFromApp(
+  payload: any,
+  adminPhone?: string,
+  adminIdentifier?: string
+): Promise<ApiResponse<Study>> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (adminPhone) headers['X-App-Admin-Phone'] = adminPhone;
+  if (adminIdentifier) headers['X-App-Admin-User'] = adminIdentifier;
+
   const res = await fetch(`${BASE_URL}/api/estudos`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-App-Admin-Phone': adminPhone,
-    },
+    headers,
     body: JSON.stringify(payload),
   });
   return res.json() as Promise<ApiResponse<Study>>;

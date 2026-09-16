@@ -18,8 +18,16 @@ export interface TheleiosState {
 export interface TheleiosUser {
   id?: string;
   name: string;
+  username?: string | null;
+  email?: string | null;
   phone: string;
   church: string;
+  birthDate?: string | null;
+  gender?: string | null;
+  maritalStatus?: string | null;
+  ministry?: string | null;
+  city?: string;
+  state?: string;
   photoUrl?: string | null;
   role?: 'admin' | 'user' | string;
   isAdmin?: boolean;

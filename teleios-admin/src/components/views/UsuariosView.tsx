@@ -23,8 +23,14 @@ import { apiFetch } from '../../services/api.service.ts';
 export interface AppUserDetail {
   id: string;
   name: string;
+  username?: string;
+  email?: string;
   phone: string;
   church?: string;
+  birthDate?: string;
+  gender?: string;
+  maritalStatus?: string;
+  ministry?: string;
   city?: string;
   state?: string;
   photoUrl?: string | null;
@@ -49,6 +55,7 @@ export interface AppUserDetail {
 export const UsuariosView: React.FC = () => {
   const [users, setUsers] = useState<AppUserDetail[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [authError, setAuthError] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedUser, setSelectedUser] = useState<AppUserDetail | null>(null);
   const [selectedUserData, setSelectedUserData] = useState<{
@@ -60,6 +67,12 @@ export const UsuariosView: React.FC = () => {
 
   // Form edit state
   const [editName, setEditName] = useState('');
+  const [editUsername, setEditUsername] = useState('');
+  const [editEmail, setEditEmail] = useState('');
+  const [editBirthDate, setEditBirthDate] = useState('');
+  const [editGender, setEditGender] = useState('');
+  const [editMaritalStatus, setEditMaritalStatus] = useState('');
+  const [editMinistry, setEditMinistry] = useState('');
   const [editChurch, setEditChurch] = useState('');
   const [editCity, setEditCity] = useState('');
   const [editState, setEditState] = useState('');
@@ -75,8 +88,14 @@ export const UsuariosView: React.FC = () => {
 
   const loadUsers = async () => {
     setIsLoading(true);
+    setAuthError(false);
     try {
       const res = await apiFetch('/api/app/users');
+      if (res.status === 401) {
+        setAuthError(true);
+        setUsers([]);
+        return;
+      }
       const json = await res.json();
       if (json.success && Array.isArray(json.data)) {
         setUsers(json.data);
@@ -102,6 +121,12 @@ export const UsuariosView: React.FC = () => {
   const handleOpenUser = async (user: AppUserDetail) => {
     setSelectedUser(user);
     setEditName(user.name || '');
+    setEditUsername(user.username || '');
+    setEditEmail(user.email || '');
+    setEditBirthDate(user.birthDate || '');
+    setEditGender(user.gender || '');
+    setEditMaritalStatus(user.maritalStatus || '');
+    setEditMinistry(user.ministry || '');
     setEditChurch(user.church || '');
     setEditCity(user.city || '');
     setEditState(user.state || '');
@@ -124,9 +149,16 @@ export const UsuariosView: React.FC = () => {
           donations: json.data.donations || [],
         });
         if (json.data.user) {
-          setSelectedUser((prev) => ({ ...prev, ...json.data.user }));
-          if (json.data.user.role || json.data.user.isAdmin !== undefined) {
-            setEditRole((json.data.user.role === 'admin' || json.data.user.isAdmin) ? 'admin' : 'user');
+          const u = json.data.user;
+          setSelectedUser((prev) => ({ ...prev, ...u }));
+          if (u.username) setEditUsername(u.username);
+          if (u.email) setEditEmail(u.email);
+          if (u.birthDate) setEditBirthDate(u.birthDate);
+          if (u.gender) setEditGender(u.gender);
+          if (u.maritalStatus) setEditMaritalStatus(u.maritalStatus);
+          if (u.ministry) setEditMinistry(u.ministry);
+          if (u.role || u.isAdmin !== undefined) {
+            setEditRole((u.role === 'admin' || u.isAdmin) ? 'admin' : 'user');
           }
         }
       }
@@ -148,6 +180,12 @@ export const UsuariosView: React.FC = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: editName.trim(),
+          username: editUsername ? editUsername.trim().replace(/^@/, '').toLowerCase() : null,
+          email: editEmail ? editEmail.trim().toLowerCase() : null,
+          birthDate: editBirthDate || null,
+          gender: editGender || null,
+          maritalStatus: editMaritalStatus || null,
+          ministry: editMinistry ? editMinistry.trim() : null,
           church: editChurch.trim(),
           city: editCity.trim(),
           state: editState.trim(),
@@ -178,12 +216,16 @@ export const UsuariosView: React.FC = () => {
   };
 
   const filteredUsers = useMemo(() => {
-    const q = searchTerm.toLowerCase().trim();
-    if (!q) return users;
-    return users.filter((u) =>
-      (u.name || '').toLowerCase().includes(q) ||
-      (u.church || '').toLowerCase().includes(q) ||
-      (u.phone || '').includes(q)
+    if (!searchTerm.trim()) return users;
+    const term = searchTerm.toLowerCase();
+    return users.filter(
+      (u) =>
+        (u.name && u.name.toLowerCase().includes(term)) ||
+        (u.username && u.username.toLowerCase().includes(term)) ||
+        (u.email && u.email.toLowerCase().includes(term)) ||
+        (u.phone && u.phone.includes(term)) ||
+        (u.church && u.church.toLowerCase().includes(term)) ||
+        (u.ministry && u.ministry.toLowerCase().includes(term))
     );
   }, [users, searchTerm]);
 
@@ -227,12 +269,28 @@ export const UsuariosView: React.FC = () => {
         </div>
       </div>
 
+      {/* Alerta de erro de autenticação */}
+      {authError && (
+        <div className="p-4 bg-amber-950/40 border border-amber-500/40 rounded-2xl flex items-center justify-between gap-3 text-amber-200 text-sm">
+          <div className="flex items-center gap-2.5">
+            <AlertCircle className="w-5 h-5 text-amber-400 shrink-0" />
+            <span>Sessão expirada ou não autorizada. Faça login novamente no painel para listar os usuários.</span>
+          </div>
+          <button
+            onClick={() => window.location.reload()}
+            className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-black font-semibold text-xs rounded-lg transition-colors cursor-pointer shrink-0"
+          >
+            Recarregar
+          </button>
+        </div>
+      )}
+
       {/* Barra de Busca Simples */}
       <div className="relative">
         <Search className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
         <input
           type="text"
-          placeholder="Buscar usuário por nome, igreja ou telefone..."
+          placeholder="Buscar usuário por nome, @usuário, e-mail, igreja ou telefone..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           className="w-full pl-10 pr-4 py-2.5 bg-[#111827] border border-[#374151] rounded-xl text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
@@ -274,7 +332,7 @@ export const UsuariosView: React.FC = () => {
                 </div>
               )}
 
-              {/* Informações Básicas (Conforme Exemplo do Usuário) */}
+              {/* Informações Básicas */}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between gap-2">
                   <h3 className="font-semibold text-white text-base truncate group-hover:text-blue-400 transition-colors">
@@ -298,9 +356,25 @@ export const UsuariosView: React.FC = () => {
                   </div>
                 </div>
 
+                {user.username && (
+                  <p className="text-xs font-semibold text-blue-400 truncate mt-0.5">
+                    @{user.username.replace(/^@/, '')}
+                  </p>
+                )}
+
                 <p className="text-xs text-gray-400 truncate mt-0.5">
-                  {user.church || 'Igreja não informada'}
+                  {user.email ? `${user.email} • ` : ''}{user.phone}
                 </p>
+
+                <div className="flex items-center gap-1.5 text-[11px] text-gray-500 truncate mt-0.5">
+                  <span>{user.church || 'Igreja não informada'}</span>
+                  {user.ministry && (
+                    <>
+                      <span>•</span>
+                      <span className="text-purple-300 font-medium">{user.ministry}</span>
+                    </>
+                  )}
+                </div>
 
                 {/* Resumo de Atividade */}
                 <div className="flex items-center gap-3 text-[11px] text-gray-500 mt-2">
@@ -432,6 +506,31 @@ export const UsuariosView: React.FC = () => {
                       </div>
 
                       <div>
+                        <label className="block text-[11px] text-gray-400 mb-1">Nome de Usuário (@)</label>
+                        <div className="relative">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 font-mono">@</span>
+                          <input
+                            type="text"
+                            value={editUsername.replace(/^@/, '')}
+                            onChange={(e) => setEditUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_.-]/g, ''))}
+                            placeholder="usuario"
+                            className="w-full pl-7 pr-3 py-2 bg-[#1F2937] border border-[#374151] rounded-lg text-sm text-white focus:outline-none focus:border-blue-500"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] text-gray-400 mb-1">E-mail</label>
+                        <input
+                          type="email"
+                          value={editEmail}
+                          onChange={(e) => setEditEmail(e.target.value)}
+                          placeholder="email@exemplo.com"
+                          className="w-full px-3 py-2 bg-[#1F2937] border border-[#374151] rounded-lg text-sm text-white focus:outline-none focus:border-blue-500"
+                        />
+                      </div>
+
+                      <div>
                         <label className="block text-[11px] text-gray-400 mb-1">Telefone / WhatsApp</label>
                         <div className="flex gap-2">
                           <input
@@ -452,6 +551,57 @@ export const UsuariosView: React.FC = () => {
                             </a>
                           )}
                         </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] text-gray-400 mb-1">Data de Nascimento</label>
+                        <input
+                          type="date"
+                          value={editBirthDate}
+                          onChange={(e) => setEditBirthDate(e.target.value)}
+                          className="w-full px-3 py-2 bg-[#1F2937] border border-[#374151] rounded-lg text-sm text-white focus:outline-none focus:border-blue-500"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] text-gray-400 mb-1">Gênero</label>
+                        <select
+                          value={editGender}
+                          onChange={(e) => setEditGender(e.target.value)}
+                          className="w-full px-3 py-2 bg-[#1F2937] border border-[#374151] rounded-lg text-sm text-white focus:outline-none focus:border-blue-500"
+                        >
+                          <option value="">Não informado</option>
+                          <option value="Masculino">Masculino</option>
+                          <option value="Feminino">Feminino</option>
+                          <option value="Outro">Outro</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] text-gray-400 mb-1">Estado Civil</label>
+                        <select
+                          value={editMaritalStatus}
+                          onChange={(e) => setEditMaritalStatus(e.target.value)}
+                          className="w-full px-3 py-2 bg-[#1F2937] border border-[#374151] rounded-lg text-sm text-white focus:outline-none focus:border-blue-500"
+                        >
+                          <option value="">Não informado</option>
+                          <option value="Solteiro(a)">Solteiro(a)</option>
+                          <option value="Casado(a)">Casado(a)</option>
+                          <option value="Noivo(a)">Noivo(a)</option>
+                          <option value="Viúvo(a)">Viúvo(a)</option>
+                          <option value="Divorciado(a)">Divorciado(a)</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] text-gray-400 mb-1">Ministério / Área de Atuação</label>
+                        <input
+                          type="text"
+                          value={editMinistry}
+                          onChange={(e) => setEditMinistry(e.target.value)}
+                          placeholder="Ex: Louvor, Jovens, Diaconia"
+                          className="w-full px-3 py-2 bg-[#1F2937] border border-[#374151] rounded-lg text-sm text-white focus:outline-none focus:border-blue-500"
+                        />
                       </div>
 
                       <div>

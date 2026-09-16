@@ -1,6 +1,24 @@
 import { useState } from 'react';
-import { X, LogIn, UserPlus, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
-import { register, loginWithPhone, checkUserExists } from '@/lib/auth';
+import {
+  X,
+  LogIn,
+  UserPlus,
+  Loader2,
+  AlertCircle,
+  CheckCircle2,
+  Eye,
+  EyeOff,
+  Mail,
+  Lock,
+  AtSign,
+  Phone,
+  User as UserIcon,
+  Church,
+  ChevronDown,
+  ChevronUp,
+  Sparkles,
+} from 'lucide-react';
+import { register, loginWithCredentials, loginWithPhone, checkUserExists } from '@/lib/auth';
 import { markLoginPromptShown } from '@/lib/storage';
 import type { UserProfile } from '@/lib/api';
 
@@ -20,22 +38,40 @@ function formatPhone(value: string): string {
 
 export default function LoginModal({ open, onClose, onSuccess }: LoginModalProps) {
   const [tab, setTab] = useState<'login' | 'register'>('login');
-  
-  // Login
-  const [loginPhone, setLoginPhone] = useState('');
+
+  // ─── LOGIN STATE ───
+  const [identifier, setIdentifier] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [showLoginPassword, setShowLoginPassword] = useState(false);
+  const [loginWithPhoneOnly, setLoginWithPhoneOnly] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [loginNotFound, setLoginNotFound] = useState(false);
 
-  // Registro
+  // ─── REGISTRO STATE ───
   const [name, setName] = useState('');
+  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [registerPhone, setRegisterPhone] = useState('');
+  const [registerPassword, setRegisterPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showRegisterPassword, setShowRegisterPassword] = useState(false);
   const [church, setChurch] = useState('');
-  const [isRegistering, setIsRegistering] = useState(false);
+  
+  // Campos complementares opcionais
+  const [showComplementary, setShowComplementary] = useState(false);
+  const [birthDate, setBirthDate] = useState('');
+  const [gender, setGender] = useState<'M' | 'F' | ''>('');
+  const [maritalStatus, setMaritalStatus] = useState('');
+  const [ministry, setMinistry] = useState('');
+  const [city, setCity] = useState('');
+  const [state, setState] = useState('');
+  const [isBaptized, setIsBaptized] = useState(false);
+  const [inDiscipleship, setInDiscipleship] = useState(false);
 
-  // Conflito / Usuário existente encontrado durante tentativa de cadastro
+  const [isRegistering, setIsRegistering] = useState(false);
   const [existingUser, setExistingUser] = useState<UserProfile | null>(null);
 
-  // Mensagens gerais de feedback
+  // Mensagens gerais
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
@@ -49,30 +85,45 @@ export default function LoginModal({ open, onClose, onSuccess }: LoginModalProps
     onClose();
   };
 
-  // ─── LOGIN COM TELEFONE ──────────────────────────────────────────────────
+  // ─── SUBMIT LOGIN ────────────────────────────────────────────────────────
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setLoginNotFound(false);
 
-    const clean = loginPhone.replace(/\D/g, '');
-    if (clean.length < 10) {
-      setError('Informe um telefone válido com DDD (mínimo 10 dígitos).');
+    const cleanId = identifier.trim();
+    if (!cleanId) {
+      setError('Informe seu e-mail, nome de usuário ou telefone.');
       return;
     }
 
     setIsLoggingIn(true);
     try {
-      const result = await loginWithPhone(clean);
-      if (result.success && result.user) {
-        setSuccessMsg(`Bem-vindo de volta, ${result.user.name}!`);
-        markLoginPromptShown();
-        setTimeout(() => {
-          onSuccess();
-        }, 800);
+      if (loginWithPhoneOnly) {
+        const cleanPhone = cleanId.replace(/\D/g, '');
+        if (cleanPhone.length < 10) {
+          setError('Informe um telefone válido com DDD (mínimo 10 dígitos).');
+          setIsLoggingIn(false);
+          return;
+        }
+        const result = await loginWithPhone(cleanPhone);
+        if (result.success && result.user) {
+          setSuccessMsg(`Bem-vindo de volta, ${result.user.name}!`);
+          markLoginPromptShown();
+          setTimeout(() => onSuccess(), 700);
+        } else {
+          setLoginNotFound(true);
+          setError(result.error || 'Nenhum cadastro encontrado com este telefone.');
+        }
       } else {
-        setLoginNotFound(true);
-        setError('Nenhum cadastro encontrado com este telefone.');
+        const result = await loginWithCredentials(cleanId, loginPassword);
+        if (result.success && result.user) {
+          setSuccessMsg(`Bem-vindo de volta, ${result.user.name}!`);
+          markLoginPromptShown();
+          setTimeout(() => onSuccess(), 700);
+        } else {
+          setError(result.error || 'Credenciais inválidas. Verifique seu login e senha.');
+        }
       }
     } catch {
       setError('Erro ao conectar ao servidor. Verifique sua conexão e tente novamente.');
@@ -81,8 +132,8 @@ export default function LoginModal({ open, onClose, onSuccess }: LoginModalProps
     }
   };
 
-  // ─── CADASTRO DE NOVO USUÁRIO ─────────────────────────────────────────────
-  const handleRegisterSubmit = async (e: React.FormEvent, forceUpdate = false) => {
+  // ─── SUBMIT CADASTRO ──────────────────────────────────────────────────────
+  const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setExistingUser(null);
@@ -92,88 +143,93 @@ export default function LoginModal({ open, onClose, onSuccess }: LoginModalProps
       return;
     }
 
-    const clean = registerPhone.replace(/\D/g, '');
-    if (clean.length < 10) {
+    const cleanUsername = username.trim().replace(/^@/, '').toLowerCase().replace(/[^a-z0-9_.]/g, '');
+    if (!cleanUsername || cleanUsername.length < 3) {
+      setError('Escolha um nome de usuário com pelo menos 3 caracteres (letras ou números).');
+      return;
+    }
+
+    if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      setError('Informe um e-mail válido.');
+      return;
+    }
+
+    const cleanPhone = registerPhone.replace(/\D/g, '');
+    if (cleanPhone.length < 10) {
       setError('Informe um telefone válido com DDD (mínimo 10 dígitos).');
+      return;
+    }
+
+    if (!registerPassword || registerPassword.length < 6) {
+      setError('Crie uma senha com pelo menos 6 caracteres.');
+      return;
+    }
+
+    if (registerPassword !== confirmPassword) {
+      setError('As senhas digitadas não coincidem.');
       return;
     }
 
     setIsRegistering(true);
     try {
-      // Se não for atualização forçada, verifica se já existe cadastro com esse telefone
-      if (!forceUpdate) {
-        const found = await checkUserExists(clean);
-        if (found) {
-          setExistingUser(found);
-          setIsRegistering(false);
-          return;
-        }
-      }
-
-      await register({
+      const result = await register({
         name: name.trim(),
-        phone: clean,
+        username: cleanUsername,
+        email: email.trim() || undefined,
+        password: registerPassword,
+        phone: cleanPhone,
         church: church.trim(),
+        birthDate: birthDate || null,
+        gender: gender || null,
+        maritalStatus: maritalStatus || null,
+        ministry: ministry.trim() || null,
+        city: city.trim() || undefined,
+        state: state.trim() || undefined,
       });
 
-      setSuccessMsg(`Cadastro realizado com sucesso! Seja bem-vindo, ${name.trim()}!`);
-      markLoginPromptShown();
-      setTimeout(() => {
-        onSuccess();
-      }, 900);
-    } catch {
-      setError('Erro ao salvar cadastro. Tente novamente.');
-    } finally {
-      setIsRegistering(false);
-    }
-  };
-
-  // ─── AÇÕES QUANDO O NÚMERO JÁ EXISTE NO CADASTRO ──────────────────────────
-  const handleEnterWithExisting = async () => {
-    if (!existingUser?.phone) return;
-    setIsRegistering(true);
-    try {
-      const result = await loginWithPhone(existingUser.phone);
-      if (result.success) {
-        setSuccessMsg(`Conta recuperada! Bem-vindo, ${result.user?.name}!`);
+      if (result.success && result.user) {
+        setSuccessMsg(`Conta criada com sucesso! Bem-vindo(a), ${name.trim()}!`);
         markLoginPromptShown();
-        setTimeout(() => {
-          onSuccess();
-        }, 800);
+        setTimeout(() => onSuccess(), 800);
+      } else {
+        setError(result.error || 'Não foi possível concluir o cadastro.');
       }
     } catch {
-      setError('Erro ao entrar com a conta existente.');
+      setError('Erro ao conectar ao servidor. Tente novamente.');
     } finally {
       setIsRegistering(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-xs" onClick={handleDismiss}>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/75 backdrop-blur-xs p-0 sm:p-4" onClick={handleDismiss}>
       <div
-        className="w-full max-w-md bg-[var(--color-surface)] rounded-t-2xl sm:rounded-2xl p-6 pb-8 shadow-2xl border border-[var(--color-border)]"
+        className="w-full max-w-lg bg-[var(--color-surface)] rounded-t-2xl sm:rounded-2xl p-5 sm:p-6 shadow-2xl border border-[var(--color-border)] max-h-[92vh] overflow-y-auto flex flex-col"
         style={{ paddingBottom: `calc(1.5rem + var(--safe-bottom))` }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Cabeçalho */}
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-3 shrink-0">
           <div className="flex items-center gap-2">
             <span className="text-xl">🕊️</span>
-            <h2 className="text-lg font-bold text-[var(--color-text)]">
-              {tab === 'login' ? 'Acessar Conta' : 'Criar Nova Conta'}
-            </h2>
+            <div>
+              <h2 className="text-base sm:text-lg font-bold text-[var(--color-text)] leading-tight">
+                {tab === 'login' ? 'Acessar Conta' : 'Criar Nova Conta'}
+              </h2>
+              <p className="text-[11px] text-[var(--color-text-muted)]">Ministério Teleios</p>
+            </div>
           </div>
           <button
             onClick={handleDismiss}
-            className="p-2 rounded-full hover:bg-[var(--color-surface-alt)] text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors"
+            className="p-1.5 rounded-full hover:bg-[var(--color-surface-alt)] text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
             aria-label="Fechar"
           >
-            <X size={20} />
+            <X size={18} />
           </button>
         </div>
 
         {/* Abas Alternadoras */}
-        <div className="flex rounded-xl bg-[var(--color-surface-alt)] p-1 mb-5 border border-[var(--color-border)]">
+        <div className="flex rounded-xl bg-[var(--color-surface-alt)] p-1 mb-4 border border-[var(--color-border)] shrink-0">
           <button
             type="button"
             onClick={() => {
@@ -181,13 +237,13 @@ export default function LoginModal({ open, onClose, onSuccess }: LoginModalProps
               setError('');
               setExistingUser(null);
             }}
-            className={`flex-1 py-2 text-sm font-semibold rounded-lg flex items-center justify-center gap-2 transition-all ${
+            className={`flex-1 py-2 text-xs sm:text-sm font-semibold rounded-lg flex items-center justify-center gap-2 transition-all cursor-pointer ${
               tab === 'login'
                 ? 'bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm'
                 : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)]'
             }`}
           >
-            <LogIn size={16} />
+            <LogIn size={15} />
             Entrar
           </button>
           <button
@@ -197,20 +253,20 @@ export default function LoginModal({ open, onClose, onSuccess }: LoginModalProps
               setError('');
               setLoginNotFound(false);
             }}
-            className={`flex-1 py-2 text-sm font-semibold rounded-lg flex items-center justify-center gap-2 transition-all ${
+            className={`flex-1 py-2 text-xs sm:text-sm font-semibold rounded-lg flex items-center justify-center gap-2 transition-all cursor-pointer ${
               tab === 'register'
                 ? 'bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm'
                 : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)]'
             }`}
           >
-            <UserPlus size={16} />
+            <UserPlus size={15} />
             Cadastrar
           </button>
         </div>
 
         {/* Feedback de Sucesso */}
         {successMsg && (
-          <div className="mb-4 p-3.5 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex items-center gap-2.5 text-emerald-400 text-sm animate-fade-in">
+          <div className="mb-4 p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex items-center gap-2.5 text-emerald-400 text-xs sm:text-sm animate-fade-in shrink-0">
             <CheckCircle2 size={18} className="shrink-0" />
             <span>{successMsg}</span>
           </div>
@@ -218,7 +274,7 @@ export default function LoginModal({ open, onClose, onSuccess }: LoginModalProps
 
         {/* Feedback de Erro */}
         {error && (
-          <div className="mb-4 p-3.5 bg-red-500/10 border border-red-500/30 rounded-xl flex items-start gap-2.5 text-red-400 text-sm animate-fade-in">
+          <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-xl flex items-start gap-2.5 text-red-400 text-xs sm:text-sm animate-fade-in shrink-0">
             <AlertCircle size={18} className="shrink-0 mt-0.5" />
             <div className="flex-1">
               <p>{error}</p>
@@ -226,61 +282,103 @@ export default function LoginModal({ open, onClose, onSuccess }: LoginModalProps
                 <button
                   type="button"
                   onClick={() => {
-                    setRegisterPhone(loginPhone);
+                    setRegisterPhone(identifier);
                     setTab('register');
                     setError('');
                     setLoginNotFound(false);
                   }}
-                  className="mt-2 text-xs font-semibold text-[var(--color-primary)] hover:underline inline-flex items-center gap-1"
+                  className="mt-2 text-xs font-semibold text-[var(--color-primary)] hover:underline inline-flex items-center gap-1 cursor-pointer"
                 >
                   <UserPlus size={14} />
-                  Criar conta com este telefone agora
+                  Criar conta agora com estes dados
                 </button>
               )}
             </div>
           </div>
         )}
 
-        {/* ─── ABA DE LOGIN ─── */}
+        {/* ─── ABA 1: LOGIN FLEXÍVEL (EMAIL, USERNAME OU TELEFONE + SENHA) ─── */}
         {tab === 'login' && (
-          <form onSubmit={handleLoginSubmit} className="flex flex-col gap-3.5">
+          <form onSubmit={handleLoginSubmit} className="flex flex-col gap-3 flex-1">
             <p className="text-xs text-[var(--color-text-muted)] leading-relaxed">
-              Informe seu telefone para recuperar seu perfil, histórico de orações e doações.
+              Entre com seu e-mail, nome de usuário ou telefone cadastrado.
             </p>
 
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-[var(--color-text-muted)]">
-                Telefone cadastrado
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-[var(--color-text-muted)] flex items-center gap-1.5">
+                <AtSign size={13} />
+                <span>E-mail, Nome de Usuário ou Telefone</span>
               </label>
               <input
-                type="tel"
-                placeholder="(98) 98765-4321"
-                value={loginPhone}
+                type="text"
+                placeholder="ex: @carlos, carlos@email.com ou (98) 98765-4321"
+                value={identifier}
                 onChange={(e) => {
-                  setLoginPhone(formatPhone(e.target.value));
+                  setIdentifier(e.target.value);
                   if (error) setError('');
                   if (loginNotFound) setLoginNotFound(false);
                 }}
-                className="w-full px-4 py-3 bg-[var(--color-surface-alt)] border border-[var(--color-border)] rounded-xl text-[var(--color-text)] placeholder:text-[var(--color-text-muted)] text-sm focus:outline-none focus:border-[var(--color-primary)] transition-colors"
-                autoComplete="tel"
+                className="w-full px-3.5 py-2.5 bg-[var(--color-surface-alt)] border border-[var(--color-border)] rounded-xl text-[var(--color-text)] placeholder:text-[var(--color-text-muted)] text-sm focus:outline-none focus:border-[var(--color-primary)] transition-colors"
+                autoComplete="username"
                 autoFocus
+                required
               />
+            </div>
+
+            {!loginWithPhoneOnly && (
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-medium text-[var(--color-text-muted)] flex items-center gap-1.5">
+                    <Lock size={13} />
+                    <span>Senha</span>
+                  </label>
+                </div>
+                <div className="relative">
+                  <input
+                    type={showLoginPassword ? 'text' : 'password'}
+                    placeholder="Sua senha de acesso"
+                    value={loginPassword}
+                    onChange={(e) => setLoginPassword(e.target.value)}
+                    className="w-full pl-3.5 pr-10 py-2.5 bg-[var(--color-surface-alt)] border border-[var(--color-border)] rounded-xl text-[var(--color-text)] placeholder:text-[var(--color-text-muted)] text-sm focus:outline-none focus:border-[var(--color-primary)] transition-colors"
+                    autoComplete="current-password"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowLoginPassword(!showLoginPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)] hover:text-white p-1 cursor-pointer"
+                    title={showLoginPassword ? 'Ocultar senha' : 'Exibir senha'}
+                  >
+                    {showLoginPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Alternador de método de login */}
+            <div className="flex items-center justify-between pt-1">
+              <button
+                type="button"
+                onClick={() => setLoginWithPhoneOnly(!loginWithPhoneOnly)}
+                className="text-xs text-[var(--color-primary-light)] hover:underline cursor-pointer"
+              >
+                {loginWithPhoneOnly ? 'Entrar com senha' : 'Entrar apenas com telefone'}
+              </button>
             </div>
 
             <button
               type="submit"
               disabled={isLoggingIn || Boolean(successMsg)}
-              className="w-full py-3.5 mt-2 bg-[var(--color-primary)] hover:bg-[var(--color-primary)]/90 disabled:opacity-60 text-white font-semibold rounded-xl transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-sm"
+              className="w-full py-3 mt-2 bg-[var(--color-primary)] hover:bg-[var(--color-primary)]/90 disabled:opacity-60 text-white font-semibold rounded-xl transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-sm text-sm"
             >
               {isLoggingIn ? (
                 <>
-                  <Loader2 size={18} className="animate-spin" />
-                  Buscando conta...
+                  <Loader2 size={16} className="animate-spin" />
+                  <span>Autenticando...</span>
                 </>
               ) : (
                 <>
-                  <LogIn size={18} />
-                  Acessar minha conta
+                  <LogIn size={16} />
+                  <span>Entrar na Conta</span>
                 </>
               )}
             </button>
@@ -288,125 +386,295 @@ export default function LoginModal({ open, onClose, onSuccess }: LoginModalProps
             <button
               type="button"
               onClick={handleDismiss}
-              className="w-full py-2.5 text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors"
+              className="w-full py-2 text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
             >
               Continuar navegando sem entrar
             </button>
           </form>
         )}
 
-        {/* ─── ABA DE CADASTRO ─── */}
+        {/* ─── ABA 2: CADASTRO COM EMAIL, SENHA, USERNAME E DADOS COMPLETOS ─── */}
         {tab === 'register' && (
-          <div>
-            {/* Aviso de número já existente */}
-            {existingUser ? (
-              <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl mb-4 text-sm text-[var(--color-text)] flex flex-col gap-3">
-                <div className="flex items-start gap-2.5 text-amber-400">
-                  <AlertCircle size={20} className="shrink-0 mt-0.5" />
-                  <div>
-                    <p className="font-semibold">Este telefone já possui cadastro!</p>
-                    <p className="text-xs text-[var(--color-text-muted)] mt-1">
-                      Encontramos uma conta em nome de <strong>{existingUser.name}</strong>
-                      {existingUser.church ? ` (${existingUser.church})` : ''}.
-                    </p>
-                  </div>
-                </div>
+          <form onSubmit={handleRegisterSubmit} className="flex flex-col gap-3 flex-1">
+            <p className="text-xs text-[var(--color-text-muted)] leading-relaxed">
+              Crie seu perfil completo para salvar seu progresso bíblico e interagir com a comunidade.
+            </p>
 
-                <div className="flex flex-col sm:flex-row gap-2 pt-1">
-                  <button
-                    type="button"
-                    onClick={handleEnterWithExisting}
-                    disabled={isRegistering}
-                    className="flex-1 py-2.5 px-3 bg-[var(--color-primary)] hover:bg-[var(--color-primary)]/90 text-white text-xs font-semibold rounded-lg transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
-                  >
-                    <LogIn size={15} />
-                    Entrar como {existingUser.name.split(' ')[0]}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={(e) => handleRegisterSubmit(e, true)}
-                    disabled={isRegistering}
-                    className="py-2.5 px-3 bg-[var(--color-surface-alt)] hover:bg-[var(--color-surface-alt)]/80 text-[var(--color-text)] border border-[var(--color-border)] text-xs font-medium rounded-lg transition-colors cursor-pointer"
-                  >
-                    Atualizar dados e entrar
-                  </button>
-                </div>
-              </div>
-            ) : null}
+            {/* Nome Completo */}
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-[var(--color-text-muted)] flex items-center gap-1.5">
+                <UserIcon size={13} />
+                <span>Nome Completo *</span>
+              </label>
+              <input
+                type="text"
+                placeholder="Seu nome completo"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full px-3.5 py-2 bg-[var(--color-surface-alt)] border border-[var(--color-border)] rounded-xl text-[var(--color-text)] placeholder:text-[var(--color-text-muted)] text-sm focus:outline-none focus:border-[var(--color-primary)]"
+                autoComplete="name"
+                required
+              />
+            </div>
 
-            <form onSubmit={(e) => handleRegisterSubmit(e, false)} className="flex flex-col gap-3">
-              <p className="text-xs text-[var(--color-text-muted)] leading-relaxed">
-                Cadastre-se para salvar seu progresso de leitura, pedidos de oração e contribuições.
-              </p>
-
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-medium text-[var(--color-text-muted)]">
-                  Nome completo
+            {/* Grid: Nome de Usuário e Telefone */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-[var(--color-text-muted)] flex items-center gap-1.5">
+                  <AtSign size={13} />
+                  <span>Nome de Usuário *</span>
                 </label>
-                <input
-                  type="text"
-                  placeholder="Seu nome completo"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-[var(--color-surface-alt)] border border-[var(--color-border)] rounded-xl text-[var(--color-text)] placeholder:text-[var(--color-text-muted)] text-sm focus:outline-none focus:border-[var(--color-primary)] transition-colors"
-                  autoComplete="name"
-                />
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-[var(--color-text-muted)] font-bold">@</span>
+                  <input
+                    type="text"
+                    placeholder="usuario"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value.replace(/^@/, '').toLowerCase())}
+                    className="w-full pl-7 pr-3 py-2 bg-[var(--color-surface-alt)] border border-[var(--color-border)] rounded-xl text-[var(--color-text)] placeholder:text-[var(--color-text-muted)] text-sm focus:outline-none focus:border-[var(--color-primary)]"
+                    autoComplete="username"
+                    required
+                  />
+                </div>
               </div>
 
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-medium text-[var(--color-text-muted)]">
-                  Telefone com DDD
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-[var(--color-text-muted)] flex items-center gap-1.5">
+                  <Phone size={13} />
+                  <span>Telefone / WhatsApp *</span>
                 </label>
                 <input
                   type="tel"
                   placeholder="(98) 98765-4321"
                   value={registerPhone}
                   onChange={(e) => setRegisterPhone(formatPhone(e.target.value))}
-                  className="w-full px-4 py-2.5 bg-[var(--color-surface-alt)] border border-[var(--color-border)] rounded-xl text-[var(--color-text)] placeholder:text-[var(--color-text-muted)] text-sm focus:outline-none focus:border-[var(--color-primary)] transition-colors"
+                  className="w-full px-3.5 py-2 bg-[var(--color-surface-alt)] border border-[var(--color-border)] rounded-xl text-[var(--color-text)] placeholder:text-[var(--color-text-muted)] text-sm focus:outline-none focus:border-[var(--color-primary)]"
                   autoComplete="tel"
+                  required
+                />
+              </div>
+            </div>
+
+            {/* Grid: E-mail e Igreja */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-[var(--color-text-muted)] flex items-center gap-1.5">
+                  <Mail size={13} />
+                  <span>E-mail</span>
+                </label>
+                <input
+                  type="email"
+                  placeholder="exemplo@email.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full px-3.5 py-2 bg-[var(--color-surface-alt)] border border-[var(--color-border)] rounded-xl text-[var(--color-text)] placeholder:text-[var(--color-text-muted)] text-sm focus:outline-none focus:border-[var(--color-primary)]"
+                  autoComplete="email"
                 />
               </div>
 
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-medium text-[var(--color-text-muted)]">
-                  Igreja / Congregação (opcional)
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-[var(--color-text-muted)] flex items-center gap-1.5">
+                  <Church size={13} />
+                  <span>Igreja / Congregação</span>
                 </label>
                 <input
                   type="text"
-                  placeholder="Ex: Igreja Batista da Aliança"
+                  placeholder="Nome da igreja"
                   value={church}
                   onChange={(e) => setChurch(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-[var(--color-surface-alt)] border border-[var(--color-border)] rounded-xl text-[var(--color-text)] placeholder:text-[var(--color-text-muted)] text-sm focus:outline-none focus:border-[var(--color-primary)] transition-colors"
+                  className="w-full px-3.5 py-2 bg-[var(--color-surface-alt)] border border-[var(--color-border)] rounded-xl text-[var(--color-text)] placeholder:text-[var(--color-text-muted)] text-sm focus:outline-none focus:border-[var(--color-primary)]"
                 />
               </div>
+            </div>
 
-              <button
-                type="submit"
-                disabled={isRegistering || Boolean(successMsg)}
-                className="w-full py-3.5 mt-2 bg-[var(--color-primary)] hover:bg-[var(--color-primary)]/90 disabled:opacity-60 text-white font-semibold rounded-xl transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-sm"
-              >
-                {isRegistering ? (
-                  <>
-                    <Loader2 size={18} className="animate-spin" />
-                    Validando e cadastrando...
-                  </>
-                ) : (
-                  <>
-                    <UserPlus size={18} />
-                    Cadastrar
-                  </>
-                )}
-              </button>
+            {/* Grid: Senha e Confirmação */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-[var(--color-text-muted)] flex items-center gap-1.5">
+                  <Lock size={13} />
+                  <span>Criar Senha * (mín. 6)</span>
+                </label>
+                <div className="relative">
+                  <input
+                    type={showRegisterPassword ? 'text' : 'password'}
+                    placeholder="Mínimo 6 caracteres"
+                    value={registerPassword}
+                    onChange={(e) => setRegisterPassword(e.target.value)}
+                    className="w-full pl-3.5 pr-9 py-2 bg-[var(--color-surface-alt)] border border-[var(--color-border)] rounded-xl text-[var(--color-text)] placeholder:text-[var(--color-text-muted)] text-sm focus:outline-none focus:border-[var(--color-primary)]"
+                    autoComplete="new-password"
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowRegisterPassword(!showRegisterPassword)}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)] hover:text-white p-1 cursor-pointer"
+                  >
+                    {showRegisterPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                  </button>
+                </div>
+              </div>
 
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-[var(--color-text-muted)]">
+                  Confirmar Senha *
+                </label>
+                <input
+                  type={showRegisterPassword ? 'text' : 'password'}
+                  placeholder="Repita sua senha"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  className="w-full px-3.5 py-2 bg-[var(--color-surface-alt)] border border-[var(--color-border)] rounded-xl text-[var(--color-text)] placeholder:text-[var(--color-text-muted)] text-sm focus:outline-none focus:border-[var(--color-primary)]"
+                  autoComplete="new-password"
+                  required
+                />
+              </div>
+            </div>
+
+            {/* Botão para Expandir Dados Complementares Opcionais */}
+            <div className="pt-1">
               <button
                 type="button"
-                onClick={handleDismiss}
-                className="w-full py-2.5 text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors"
+                onClick={() => setShowComplementary(!showComplementary)}
+                className="w-full py-2 px-3 rounded-xl bg-[var(--color-surface-alt)] hover:bg-[var(--color-border)]/40 border border-[var(--color-border)] text-xs text-[var(--color-primary-light)] font-semibold flex items-center justify-between transition-colors cursor-pointer"
               >
-                Pular por enquanto
+                <span className="flex items-center gap-1.5">
+                  <Sparkles size={14} className="text-amber-400" />
+                  <span>Completar cadastro com dados adicionais (Opcional)</span>
+                </span>
+                {showComplementary ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
               </button>
-            </form>
-          </div>
+            </div>
+
+            {/* SEÇÃO OPCIONAL EXPANDIDA */}
+            {showComplementary && (
+              <div className="p-3.5 bg-[var(--color-surface-alt)]/60 border border-[var(--color-border)] rounded-xl space-y-3 animate-fade-in">
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div>
+                    <label className="block text-[11px] text-[var(--color-text-muted)] mb-1">Nascimento</label>
+                    <input
+                      type="date"
+                      value={birthDate}
+                      onChange={(e) => setBirthDate(e.target.value)}
+                      className="w-full px-3 py-1.5 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg text-xs text-[var(--color-text)] focus:outline-none focus:border-[var(--color-primary)]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] text-[var(--color-text-muted)] mb-1">Gênero</label>
+                    <select
+                      value={gender}
+                      onChange={(e) => setGender(e.target.value as any)}
+                      className="w-full px-3 py-1.5 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg text-xs text-[var(--color-text)] focus:outline-none focus:border-[var(--color-primary)]"
+                    >
+                      <option value="">Não informar</option>
+                      <option value="M">Masculino</option>
+                      <option value="F">Feminino</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div>
+                    <label className="block text-[11px] text-[var(--color-text-muted)] mb-1">Estado Civil</label>
+                    <select
+                      value={maritalStatus}
+                      onChange={(e) => setMaritalStatus(e.target.value)}
+                      className="w-full px-3 py-1.5 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg text-xs text-[var(--color-text)] focus:outline-none focus:border-[var(--color-primary)]"
+                    >
+                      <option value="">Selecione...</option>
+                      <option value="Solteiro(a)">Solteiro(a)</option>
+                      <option value="Casado(a)">Casado(a)</option>
+                      <option value="Viúvo(a)">Viúvo(a)</option>
+                      <option value="Divorciado(a)">Divorciado(a)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] text-[var(--color-text-muted)] mb-1">Ministério</label>
+                    <input
+                      type="text"
+                      placeholder="Ex: Louvor, Intercessão"
+                      value={ministry}
+                      onChange={(e) => setMinistry(e.target.value)}
+                      className="w-full px-3 py-1.5 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg text-xs text-[var(--color-text)] focus:outline-none focus:border-[var(--color-primary)]"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="col-span-2">
+                    <label className="block text-[11px] text-[var(--color-text-muted)] mb-1">Cidade</label>
+                    <input
+                      type="text"
+                      placeholder="Sua cidade"
+                      value={city}
+                      onChange={(e) => setCity(e.target.value)}
+                      className="w-full px-3 py-1.5 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg text-xs text-[var(--color-text)] focus:outline-none focus:border-[var(--color-primary)]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-[var(--color-text-muted)] mb-1">UF</label>
+                    <input
+                      type="text"
+                      placeholder="UF"
+                      maxLength={2}
+                      value={state}
+                      onChange={(e) => setState(e.target.value.toUpperCase())}
+                      className="w-full px-3 py-1.5 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg text-xs text-[var(--color-text)] focus:outline-none focus:border-[var(--color-primary)] text-center"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-4 pt-1">
+                  <label className="flex items-center gap-1.5 text-xs text-[var(--color-text)] cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={isBaptized}
+                      onChange={(e) => setIsBaptized(e.target.checked)}
+                      className="rounded border-[var(--color-border)] text-[var(--color-primary)]"
+                    />
+                    <span>Batizado nas águas</span>
+                  </label>
+
+                  <label className="flex items-center gap-1.5 text-xs text-[var(--color-text)] cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={inDiscipleship}
+                      onChange={(e) => setInDiscipleship(e.target.checked)}
+                      className="rounded border-[var(--color-border)] text-[var(--color-primary)]"
+                    />
+                    <span>Faz discipulado</span>
+                  </label>
+                </div>
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={isRegistering || Boolean(successMsg)}
+              className="w-full py-3.5 mt-2 bg-[var(--color-primary)] hover:bg-[var(--color-primary)]/90 disabled:opacity-60 text-white font-semibold rounded-xl transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-sm text-sm"
+            >
+              {isRegistering ? (
+                <>
+                  <Loader2 size={16} className="animate-spin" />
+                  <span>Cadastrando...</span>
+                </>
+              ) : (
+                <>
+                  <UserPlus size={16} />
+                  <span>Criar Minha Conta</span>
+                </>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={handleDismiss}
+              className="w-full py-2 text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
+            >
+              Pular por enquanto
+            </button>
+          </form>
         )}
       </div>
     </div>

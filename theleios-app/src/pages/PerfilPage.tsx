@@ -57,8 +57,16 @@ export default function PerfilPage() {
   // ─── Edição do Perfil (Recolhido por padrão) ────────────────────────────────
   const [isEditing, setIsEditing] = useState(false);
   const [name, setName] = useState(user?.name ?? '');
+  const [username, setUsername] = useState(user?.username ?? '');
+  const [email, setEmail] = useState(user?.email ?? '');
   const [phone, setPhone] = useState(user?.phone ?? '');
   const [church, setChurch] = useState(user?.church ?? '');
+  const [birthDate, setBirthDate] = useState(user?.birthDate ?? '');
+  const [gender, setGender] = useState(user?.gender ?? '');
+  const [maritalStatus, setMaritalStatus] = useState(user?.maritalStatus ?? '');
+  const [ministry, setMinistry] = useState(user?.ministry ?? '');
+  const [city, setCity] = useState(user?.city ?? '');
+  const [state, setState] = useState(user?.state ?? '');
   const [photoUrl, setPhotoUrl] = useState(user?.photoUrl ?? '');
   const [isBaptized, setIsBaptized] = useState(user?.isBaptized ?? false);
   const [timeAsBeliever, setTimeAsBeliever] = useState(user?.timeAsBeliever ?? '');
@@ -66,6 +74,23 @@ export default function PerfilPage() {
   const [disciplerName, setDisciplerName] = useState(user?.disciplerName ?? '');
   const [notes, setNotes] = useState(user?.notes ?? '');
   const [saved, setSaved] = useState(false);
+
+  // Cálculo da porcentagem de preenchimento do perfil
+  const fieldsToCheck = [
+    name,
+    username,
+    email,
+    phone,
+    church,
+    birthDate,
+    gender,
+    maritalStatus,
+    ministry,
+    city,
+    photoUrl,
+  ];
+  const filledFieldsCount = fieldsToCheck.filter(Boolean).length;
+  const profileCompletionPercent = Math.min(100, Math.round((filledFieldsCount / fieldsToCheck.length) * 100));
 
   // ─── Listas de Orações e Doações ───────────────────────────────────────────
   const [prayers, setPrayers] = useState<PrayerItem[]>([]);
@@ -95,24 +120,35 @@ export default function PerfilPage() {
   const [isAdminUser, setIsAdminUser] = useState(() => Boolean(user?.role === 'admin' || user?.isAdmin || user?.role === 'superadmin'));
 
   useEffect(() => {
-    if (user?.phone) {
-      fetchUserProfile(user.phone).then((profile) => {
+    const userIdentifier = user?.phone || user?.username || user?.email || user?.id;
+    if (userIdentifier) {
+      fetchUserProfile(userIdentifier).then((profile) => {
         if (profile) {
           const isAdm = Boolean(profile.isAdmin || profile.role === 'admin' || profile.role === 'superadmin');
           setIsAdminUser(isAdm);
-          if (profile.role !== user.role || Boolean(user.isAdmin) !== isAdm) {
-            const updated: TheleiosUser = {
-              ...user,
-              role: profile.role || (isAdm ? 'admin' : 'user'),
-              isAdmin: isAdm,
-            };
-            setUser(updated);
-            setUserStorage(updated);
-          }
+          const updated: TheleiosUser = {
+            ...user,
+            name: profile.name || user?.name || '',
+            username: profile.username || user?.username || null,
+            email: profile.email || user?.email || null,
+            phone: profile.phone || user?.phone || '',
+            church: profile.church || user?.church || '',
+            birthDate: profile.birthDate || user?.birthDate || null,
+            gender: profile.gender || user?.gender || null,
+            maritalStatus: profile.maritalStatus || user?.maritalStatus || null,
+            ministry: profile.ministry || user?.ministry || null,
+            city: profile.city || user?.city || '',
+            state: profile.state || user?.state || '',
+            photoUrl: profile.photoUrl || user?.photoUrl || null,
+            role: profile.role || (isAdm ? 'admin' : (user?.role || 'user')),
+            isAdmin: isAdm,
+          };
+          setUser(updated);
+          setUserStorage(updated);
         }
       }).catch(() => {});
     }
-  }, [user?.phone]);
+  }, [user?.phone, user?.username, user?.email, user?.id]);
 
   // ─── Estado do Upload Rápido (Exclusivo para Administrador) ────────────────
   const [showAdminUploadModal, setShowAdminUploadModal] = useState(false);
@@ -215,18 +251,21 @@ export default function PerfilPage() {
 
     try {
       const phone = user?.phone || '';
+      const userIdentifier = user?.username || user?.email || user?.id || '';
       // 1. Upload do documento via Worker
-      const uploadedDoc = await uploadMediaFromApp(adminDocFile, phone, 'DOCUMENTO');
+      const uploadedDoc = await uploadMediaFromApp(adminDocFile, phone, 'DOCUMENTO', userIdentifier);
       if (!uploadedDoc) {
         throw new Error('Falha no envio do documento para o servidor.');
       }
 
-      // 2. Upload da imagem de capa (se houver)
+      // 2. Upload da imagem de capa (se houver) com geração de thumbnail automática
       let coverUrl: string | null = null;
+      let thumbnailUrl: string | null = null;
       if (adminCoverFile) {
-        const uploadedCover = await uploadMediaFromApp(adminCoverFile, phone, 'GALERIA');
+        const uploadedCover = await uploadMediaFromApp(adminCoverFile, phone, 'GALERIA', userIdentifier);
         if (uploadedCover) {
           coverUrl = uploadedCover.url;
+          thumbnailUrl = uploadedCover.thumbnailUrl || uploadedCover.url;
         }
       }
 
@@ -249,10 +288,11 @@ export default function PerfilPage() {
         documentType: uploadedDoc.ext,
         documentSize: uploadedDoc.size,
         generatedImgUrl: coverUrl,
+        thumbnailUrl: thumbnailUrl,
         scheduledAt: adminDate ? new Date(adminDate).toISOString() : new Date().toISOString(),
       };
 
-      const res = await createStudyFromApp(payload, phone);
+      const res = await createStudyFromApp(payload, phone, userIdentifier);
       if (res.success) {
         setAdminUploadFeedback({
           type: 'success',
@@ -344,8 +384,16 @@ export default function PerfilPage() {
 
     const updated = updateProfile({
       name,
+      username: username ? username.trim().replace(/^@/, '').toLowerCase() : undefined,
+      email: email ? email.trim().toLowerCase() : undefined,
       phone,
       church,
+      birthDate: birthDate || undefined,
+      gender: gender || undefined,
+      maritalStatus: maritalStatus || undefined,
+      ministry: ministry || undefined,
+      city: city || undefined,
+      state: state || undefined,
       photoUrl,
       isBaptized,
       timeAsBeliever,
@@ -380,9 +428,17 @@ export default function PerfilPage() {
     const u = getCurrentUser();
     if (u) {
       setUser(u);
-      setName(u.name);
-      setPhone(u.phone);
-      setChurch(u.church);
+      setName(u.name || '');
+      setUsername(u.username || '');
+      setEmail(u.email || '');
+      setPhone(u.phone || '');
+      setChurch(u.church || '');
+      setBirthDate(u.birthDate || '');
+      setGender(u.gender || '');
+      setMaritalStatus(u.maritalStatus || '');
+      setMinistry(u.ministry || '');
+      setCity(u.city || '');
+      setState(u.state || '');
       setPhotoUrl(u.photoUrl || '');
       setIsBaptized(u.isBaptized || false);
       setTimeAsBeliever(u.timeAsBeliever || '');
@@ -604,6 +660,11 @@ export default function PerfilPage() {
                   </span>
                 )}
               </div>
+              {(user?.username || username) && (
+                <p className="text-xs font-semibold text-[var(--color-primary)] truncate">
+                  @{String(user?.username || username).replace(/^@/, '')}
+                </p>
+              )}
               <p className="text-xs text-[var(--color-text-muted)] truncate flex items-center gap-1.5 mt-0.5">
                 <Church size={13} className="shrink-0 text-[var(--color-primary-light)]" />
                 <span>{user?.church || church || 'Membro da Comunidade'}</span>
@@ -629,6 +690,33 @@ export default function PerfilPage() {
           </div>
         </div>
 
+        {/* ─── BARRA DE CONCLUSÃO DO CADASTRO ─── */}
+        {profileCompletionPercent < 100 && (
+          <div className="mt-3.5 pt-3.5 border-t border-[var(--color-border)]/60">
+            <div className="flex items-center justify-between text-xs mb-1.5">
+              <span className="text-[var(--color-text-muted)] font-medium flex items-center gap-1.5">
+                <Sparkles size={13} className="text-amber-400" />
+                Perfil {profileCompletionPercent}% completo
+              </span>
+              {!isEditing && (
+                <button
+                  type="button"
+                  onClick={() => setIsEditing(true)}
+                  className="text-[var(--color-primary)] hover:underline font-medium text-[11px] cursor-pointer"
+                >
+                  Completar perfil
+                </button>
+              )}
+            </div>
+            <div className="w-full bg-[var(--color-surface-alt)] h-2 rounded-full overflow-hidden border border-[var(--color-border)]/50">
+              <div
+                className="h-full bg-gradient-to-r from-[var(--color-primary)] to-emerald-400 rounded-full transition-all duration-500"
+                style={{ width: `${Math.max(10, profileCompletionPercent)}%` }}
+              />
+            </div>
+          </div>
+        )}
+
         {/* ─── FORMULÁRIO DE EDIÇÃO RECOLHIDO POR PADRÃO ───────────────────── */}
         {isEditing && (
           <form onSubmit={handleSaveProfile} className="mt-4 pt-4 border-t border-[var(--color-border)] space-y-3.5">
@@ -650,9 +738,36 @@ export default function PerfilPage() {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 className="w-full px-3.5 py-2.5 bg-[var(--color-surface-alt)] border border-[var(--color-border)] rounded-xl text-[var(--color-text)] text-sm focus:outline-none focus:border-[var(--color-primary)]"
-                placeholder="Seu nome"
+                placeholder="Seu nome completo"
                 required
               />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs text-[var(--color-text-muted)] mb-1">Nome de Usuário (@)</label>
+                <div className="relative">
+                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs text-[var(--color-text-muted)] font-mono">@</span>
+                  <input
+                    type="text"
+                    value={username.replace(/^@/, '')}
+                    onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_.-]/g, ''))}
+                    className="w-full pl-8 pr-3.5 py-2.5 bg-[var(--color-surface-alt)] border border-[var(--color-border)] rounded-xl text-[var(--color-text)] text-sm focus:outline-none focus:border-[var(--color-primary)]"
+                    placeholder="usuario"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs text-[var(--color-text-muted)] mb-1">E-mail</label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-[var(--color-surface-alt)] border border-[var(--color-border)] rounded-xl text-[var(--color-text)] text-sm focus:outline-none focus:border-[var(--color-primary)]"
+                  placeholder="seuemail@exemplo.com"
+                />
+              </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -674,8 +789,87 @@ export default function PerfilPage() {
                   value={church}
                   onChange={(e) => setChurch(e.target.value)}
                   className="w-full px-3.5 py-2.5 bg-[var(--color-surface-alt)] border border-[var(--color-border)] rounded-xl text-[var(--color-text)] text-sm focus:outline-none focus:border-[var(--color-primary)]"
-                  placeholder="Nome da igreja"
+                  placeholder="Nome da igreja que congrega"
                 />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label className="block text-xs text-[var(--color-text-muted)] mb-1">Data de Nascimento</label>
+                <input
+                  type="date"
+                  value={birthDate}
+                  onChange={(e) => setBirthDate(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-[var(--color-surface-alt)] border border-[var(--color-border)] rounded-xl text-[var(--color-text)] text-xs focus:outline-none focus:border-[var(--color-primary)]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs text-[var(--color-text-muted)] mb-1">Gênero</label>
+                <select
+                  value={gender}
+                  onChange={(e) => setGender(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-[var(--color-surface-alt)] border border-[var(--color-border)] rounded-xl text-[var(--color-text)] text-xs focus:outline-none focus:border-[var(--color-primary)]"
+                >
+                  <option value="">Selecione</option>
+                  <option value="Masculino">Masculino</option>
+                  <option value="Feminino">Feminino</option>
+                  <option value="Outro">Outro</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs text-[var(--color-text-muted)] mb-1">Estado Civil</label>
+                <select
+                  value={maritalStatus}
+                  onChange={(e) => setMaritalStatus(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-[var(--color-surface-alt)] border border-[var(--color-border)] rounded-xl text-[var(--color-text)] text-xs focus:outline-none focus:border-[var(--color-primary)]"
+                >
+                  <option value="">Selecione</option>
+                  <option value="Solteiro(a)">Solteiro(a)</option>
+                  <option value="Casado(a)">Casado(a)</option>
+                  <option value="Noivo(a)">Noivo(a)</option>
+                  <option value="Viúvo(a)">Viúvo(a)</option>
+                  <option value="Divorciado(a)">Divorciado(a)</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs text-[var(--color-text-muted)] mb-1">Ministério / Área de Atuação</label>
+                <input
+                  type="text"
+                  value={ministry}
+                  onChange={(e) => setMinistry(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-[var(--color-surface-alt)] border border-[var(--color-border)] rounded-xl text-[var(--color-text)] text-sm focus:outline-none focus:border-[var(--color-primary)]"
+                  placeholder="Ex: Louvor, Jovens, Diaconia"
+                />
+              </div>
+
+              <div className="grid grid-cols-3 gap-2">
+                <div className="col-span-2">
+                  <label className="block text-xs text-[var(--color-text-muted)] mb-1">Cidade</label>
+                  <input
+                    type="text"
+                    value={city}
+                    onChange={(e) => setCity(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-[var(--color-surface-alt)] border border-[var(--color-border)] rounded-xl text-[var(--color-text)] text-sm focus:outline-none focus:border-[var(--color-primary)]"
+                    placeholder="Sua cidade"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-[var(--color-text-muted)] mb-1">UF</label>
+                  <input
+                    type="text"
+                    maxLength={2}
+                    value={state}
+                    onChange={(e) => setState(e.target.value.toUpperCase())}
+                    className="w-full px-2 py-2.5 bg-[var(--color-surface-alt)] border border-[var(--color-border)] rounded-xl text-[var(--color-text)] text-sm text-center uppercase focus:outline-none focus:border-[var(--color-primary)]"
+                    placeholder="UF"
+                  />
+                </div>
               </div>
             </div>
 
