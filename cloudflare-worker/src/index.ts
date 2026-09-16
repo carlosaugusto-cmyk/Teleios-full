@@ -375,10 +375,10 @@ app.get('/api/estudos', async (c) => {
     (v) => !deletedSet.has(v.id) && (!v.fileId || !deletedSet.has(v.fileId))
   );
 
-  const nowIso = now();
+  const nowMs = Date.now();
   let studiesModified = false;
   studies.forEach((s) => {
-    if ((s.status === 'AGENDADO' || !s.published) && s.scheduledAt && s.scheduledAt <= nowIso) {
+    if ((s.status === 'AGENDADO' || !s.published) && s.scheduledAt && new Date(s.scheduledAt).getTime() <= nowMs) {
       s.status = 'PUBLICADO';
       s.published = true;
       studiesModified = true;
@@ -391,7 +391,7 @@ app.get('/api/estudos', async (c) => {
   let data = studies.map((rawS) => {
     const s = enrichStudyWithDocument(rawS, files);
     const file = files.find((f) => f.id === s.fileId) || files.find((f) => f.originalName === s.documentName);
-    const isFuture = Boolean(s.scheduledAt && s.scheduledAt > nowIso);
+    const isFuture = Boolean(s.scheduledAt && new Date(s.scheduledAt).getTime() > nowMs);
     const status = isFuture ? 'AGENDADO' : (s.status || (s.published === false ? 'RASCUNHO' : 'PUBLICADO'));
     const isPublished = isFuture ? false : (status === 'PUBLICADO' || s.published === true);
 
@@ -490,9 +490,9 @@ app.get('/api/estudos', async (c) => {
 
   if (!showAll) {
     data = data.filter((s: any) => {
-      if (s.scheduledAt && s.scheduledAt > nowIso) return false;
+      if (s.scheduledAt && new Date(s.scheduledAt).getTime() > nowMs) return false;
       if (s.status === 'PUBLICADO' || s.published === true) return true;
-      if (s.status === 'AGENDADO' && s.scheduledAt && s.scheduledAt <= nowIso) return true;
+      if (s.status === 'AGENDADO' && s.scheduledAt && new Date(s.scheduledAt).getTime() <= nowMs) return true;
       return false;
     });
   }
@@ -629,8 +629,8 @@ app.post('/api/estudos', authMiddleware, requirePermission('estudos'), async (c)
     return c.json({ success: false, error: 'Título é obrigatório.' }, 400);
   }
 
-  const nowIso = now();
-  const isFutureScheduled = Boolean(body.scheduledAt && body.scheduledAt > nowIso);
+  const nowMs = Date.now();
+  const isFutureScheduled = Boolean(body.scheduledAt && new Date(body.scheduledAt).getTime() > nowMs);
   const status = isFutureScheduled ? 'AGENDADO' : (body.status || 'PUBLICADO');
   const isPublished = isFutureScheduled ? false : (status === 'PUBLICADO');
   const studyId = id('study');
@@ -721,8 +721,9 @@ app.put('/api/estudos/:id', authMiddleware, requirePermission('estudos'), async 
 
   const existing = studies[idx];
   const nowIso = now();
+  const nowMs = Date.now();
   const scheduledAt = body.scheduledAt !== undefined ? body.scheduledAt : existing.scheduledAt;
-  const isFutureScheduled = Boolean(scheduledAt && scheduledAt > nowIso);
+  const isFutureScheduled = Boolean(scheduledAt && new Date(scheduledAt).getTime() > nowMs);
   const newStatus = isFutureScheduled ? 'AGENDADO' : (body.status || existing.status || 'PUBLICADO');
   const isPublished = isFutureScheduled ? false : (newStatus === 'PUBLICADO');
 
@@ -3246,11 +3247,11 @@ export default {
   async scheduled(event: any, env: Bindings, ctx: ExecutionContext) {
     try {
       if (env.TELEIOS_KV) {
-        const nowIso = now();
+        const nowMs = Date.now();
         const studies = await getJson<Study[]>(env.TELEIOS_KV, KEY.studies, []);
         let updated = false;
         studies.forEach((s) => {
-          if ((s.status === 'AGENDADO' || !s.published) && s.scheduledAt && s.scheduledAt <= nowIso) {
+          if ((s.status === 'AGENDADO' || !s.published) && s.scheduledAt && new Date(s.scheduledAt).getTime() <= nowMs) {
             s.status = 'PUBLICADO';
             s.published = true;
             updated = true;

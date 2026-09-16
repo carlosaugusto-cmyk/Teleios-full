@@ -104,9 +104,12 @@ export function checkNewContentAndNotify(
 ): void {
   if (!Array.isArray(studies) || studies.length === 0) return;
 
-  // Filtrar apenas conteúdos publicados
+  // Filtrar apenas conteúdos realmente publicados e liberados (ignora agendados futuros)
+  const nowMs = Date.now();
   const published = studies.filter(
-    (s) => s.published === true || s.status === 'PUBLICADO'
+    (s) =>
+      (s.published === true || s.status === 'PUBLICADO') &&
+      (!s.scheduledAt || new Date(s.scheduledAt).getTime() <= nowMs)
   );
   if (published.length === 0) return;
 

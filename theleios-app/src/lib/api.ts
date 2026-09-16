@@ -187,7 +187,12 @@ export function normalizeStudy(s: Study): Study {
 /** Lista todos os estudos/devocionais publicados (endpoint público, sem auth) */
 export async function fetchEstudos(): Promise<Study[]> {
   const res = await request<Study[]>('/api/estudos');
-  if (res.success && Array.isArray(res.data)) return res.data.map(normalizeStudy);
+  if (res.success && Array.isArray(res.data)) {
+    const nowMs = Date.now();
+    return res.data
+      .map(normalizeStudy)
+      .filter((s) => !s.scheduledAt || new Date(s.scheduledAt).getTime() <= nowMs);
+  }
   return [];
 }
 

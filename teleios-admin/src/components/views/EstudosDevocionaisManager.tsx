@@ -25,12 +25,28 @@ import {
   Download,
   File,
   Paperclip,
+  CalendarClock,
+  Zap,
+  CheckCircle2,
 } from 'lucide-react';
 import { Study } from '../../types/index.ts';
 import { apiFetch } from '../../services/api.service.ts';
 import { safeApiFetch } from '../../utils/contentSanitizer.ts';
 import { BIBLE_BOOKS, extractBibleReference, BibleBookInfo } from '../../utils/bibleExtractor.ts';
 import { uploadImageWithThumbnail } from '../../utils/imageOptimizer.ts';
+
+function getLocalDateString(d = new Date()): string {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function getLocalTimeString(d = new Date()): string {
+  const hours = String(d.getHours()).padStart(2, '0');
+  const minutes = String(d.getMinutes()).padStart(2, '0');
+  return `${hours}:${minutes}`;
+}
 
 interface EstudosDevocionaisManagerProps {
   defaultTab?: 'devocionais' | 'estudos';
@@ -73,8 +89,9 @@ export const EstudosDevocionaisManager: React.FC<EstudosDevocionaisManagerProps>
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const [coverPreviewUrl, setCoverPreviewUrl] = useState<string>('');
   const [docFile, setDocFile] = useState<File | null>(null);
-  const [formScheduledDate, setFormScheduledDate] = useState<string>('');
-  const [formScheduledTime, setFormScheduledTime] = useState<string>('');
+  const [formPublishMode, setFormPublishMode] = useState<'immediate' | 'scheduled'>('immediate');
+  const [formScheduledDate, setFormScheduledDate] = useState<string>(() => getLocalDateString());
+  const [formScheduledTime, setFormScheduledTime] = useState<string>(() => getLocalTimeString());
   const [existingDoc, setExistingDoc] = useState<{
     url: string;
     name: string;
@@ -94,14 +111,20 @@ export const EstudosDevocionaisManager: React.FC<EstudosDevocionaisManagerProps>
   const loadData = async () => {
     setIsLoading(true);
     try {
-      const res = await safeApiFetch<Study[]>('/api/estudos?all=true');
-      if (res.success && Array.isArray(res.data)) {
-        setStudies(res.data);
+      // Carregar apenas estudos & devocionais (evitando vídeos do YouTube aqui)
+      const res = await apiFetch('/api/estudos?all=true');
+      const json = await res.json();
+      if (json.success && Array.isArray(json.data)) {
+        // Filtrar estritamente apenas os tipos Devocional e Estudo
+        const filtered = (json.data as Study[]).filter(
+          (item) => item.type === 'Devocional' || item.type === 'Estudo'
+        );
+        setStudies(filtered);
       } else {
         setStudies([]);
       }
     } catch {
-      setStudies([]);
+      showFeedback('error', 'Falha ao carregar conteúdos.');
     } finally {
       setIsLoading(false);
     }
@@ -116,14 +139,22 @@ export const EstudosDevocionaisManager: React.FC<EstudosDevocionaisManagerProps>
     setTimeout(() => setFeedback(null), 4000);
   };
 
-  // Separação por tipo de conteúdo
-  const devocionais = useMemo(() => {
-    return studies.filter((s) => s.type === 'Devocional');
-  }, [studies]);
+  const filteredStudies = useMemo(() => {
+    const targetType = activeTab === 'devocionais' ? 'Devocional' : 'Estudo';
+    return studies.filter((item) => {
+      const matchesType = (item.type || 'Devocional') === targetType;
+      const matchesSearch =
+        item.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (item.content || item.rawContent || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (item.topic || '').toLowerCase().includes(searchTerm.toLowerCase());
+      return matchesType && matchesSearch;
+    });
+  }, [studies, activeTab, searchTerm]);
 
-  const estudos = useMemo(() => {
-    return studies.filter((s) => s.type === 'Estudo');
-  }, [studies]);
+  // Resetar página de devocionais ao trocar busca ou aba
+  useEffect(() => {
+    setDevocionaisPage(1);
+  }, [searchTerm, activeTab]);
 
   // Detector automático em tempo real no modal de Estudo
   useEffect(() => {
@@ -153,11 +184,6 @@ export const EstudosDevocionaisManager: React.FC<EstudosDevocionaisManagerProps>
     }
   }, [coverFile]);
 
-  // Reset de página ao buscar
-  useEffect(() => {
-    setDevocionaisPage(1);
-  }, [searchTerm, activeTab]);
-
   const openCreateModal = () => {
     setEditingItem(null);
     setFormTitle('');
@@ -171,9 +197,9 @@ export const EstudosDevocionaisManager: React.FC<EstudosDevocionaisManagerProps>
     setExistingDoc(null);
     setDocError(null);
     setErrors({});
-    const nowD = new Date();
-    setFormScheduledDate(nowD.toISOString().split('T')[0]);
-    setFormScheduledTime(`${String(nowD.getHours()).padStart(2, '0')}:${String(nowD.getMinutes()).padStart(2, '0')}`);
+    setFormPublishMode('immediate');
+    setFormScheduledDate(getLocalDateString());
+    setFormScheduledTime(getLocalTimeString());
     setIsModalOpen(true);
   };
 
@@ -185,14 +211,15 @@ export const EstudosDevocionaisManager: React.FC<EstudosDevocionaisManagerProps>
     setCoverPreviewUrl(item.generatedImgUrl || item.aiImageUrl || item.mediaFile?.driveWebViewLink || '');
     setDocFile(null);
     setDocError(null);
-    if (item.scheduledAt) {
-      const d = new Date(item.scheduledAt);
-      setFormScheduledDate(d.toISOString().split('T')[0]);
-      setFormScheduledTime(`${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`);
+    if (item.status === 'AGENDADO' || (item.scheduledAt && new Date(item.scheduledAt).getTime() > Date.now())) {
+      setFormPublishMode('scheduled');
+      const d = item.scheduledAt ? new Date(item.scheduledAt) : new Date();
+      setFormScheduledDate(getLocalDateString(d));
+      setFormScheduledTime(getLocalTimeString(d));
     } else {
-      const nowD = new Date();
-      setFormScheduledDate(nowD.toISOString().split('T')[0]);
-      setFormScheduledTime(`${String(nowD.getHours()).padStart(2, '0')}:${String(nowD.getMinutes()).padStart(2, '0')}`);
+      setFormPublishMode('immediate');
+      setFormScheduledDate(getLocalDateString());
+      setFormScheduledTime(getLocalTimeString());
     }
     if (item.documentUrl) {
       setExistingDoc({
@@ -252,9 +279,9 @@ export const EstudosDevocionaisManager: React.FC<EstudosDevocionaisManagerProps>
     setExistingDoc(null);
     setDocError(null);
     setErrors({});
-    const nowD = new Date();
-    setFormScheduledDate(nowD.toISOString().split('T')[0]);
-    setFormScheduledTime(`${String(nowD.getHours()).padStart(2, '0')}:${String(nowD.getMinutes()).padStart(2, '0')}`);
+    setFormPublishMode('immediate');
+    setFormScheduledDate(getLocalDateString());
+    setFormScheduledTime(getLocalTimeString());
 
     if (activeTab === 'estudos') {
       const detected = extractBibleReference(cleanTitle);
@@ -370,11 +397,30 @@ export const EstudosDevocionaisManager: React.FC<EstudosDevocionaisManagerProps>
         : (editingItem?.topic || 'Geral');
 
       let scheduledIso: string | null = null;
-      if (formScheduledDate) {
-        const timeStr = formScheduledTime || '00:00';
-        scheduledIso = new Date(`${formScheduledDate}T${timeStr}:00`).toISOString();
+      let isFuture = false;
+
+      if (formPublishMode === 'scheduled') {
+        if (!formScheduledDate) {
+          showFeedback('error', 'Selecione a data para agendamento.');
+          setIsSaving(false);
+          return;
+        }
+        const timeStr = formScheduledTime || '07:00';
+        const dateObj = new Date(`${formScheduledDate}T${timeStr}:00`);
+        if (isNaN(dateObj.getTime())) {
+          showFeedback('error', 'Data ou horário de agendamento inválidos.');
+          setIsSaving(false);
+          return;
+        }
+        if (dateObj.getTime() <= Date.now()) {
+          showFeedback('error', 'Para agendar, a data e horário devem ser no futuro. Se deseja publicar imediatamente, selecione "Publicar Agora".');
+          setIsSaving(false);
+          return;
+        }
+        scheduledIso = dateObj.toISOString();
+        isFuture = true;
       }
-      const isFuture = Boolean(scheduledIso && new Date(scheduledIso).getTime() > Date.now());
+
       const finalStatus = isFuture ? 'AGENDADO' : 'PUBLICADO';
       const finalPublished = !isFuture;
 
@@ -1490,38 +1536,85 @@ export const EstudosDevocionaisManager: React.FC<EstudosDevocionaisManagerProps>
                 {errors.cover && <p className="text-xs text-red-400 mt-1">{errors.cover}</p>}
               </div>
 
-              {/* Agendamento de Publicação no Backend */}
+              {/* Modo de Publicação: Imediato vs Agendado */}
               <div className="p-4 bg-[#0A0F1A]/80 border border-[#374151] rounded-xl space-y-3">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
-                  <label className="text-xs font-bold text-gray-200 uppercase tracking-wider flex items-center gap-1.5">
-                    <Clock className="w-4 h-4 text-blue-400" />
-                    <span>Data e Horário de Publicação</span>
-                  </label>
-                  <span className="text-[11px] text-blue-300">
-                    Se a data/hora for futura, o servidor agenda automaticamente
-                  </span>
+                <label className="text-xs font-bold text-gray-200 uppercase tracking-wider block mb-1">
+                  Modo de Publicação
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setFormPublishMode('immediate')}
+                    className={`flex items-center justify-center gap-2 py-2 px-3 rounded-xl border text-xs font-semibold transition cursor-pointer ${
+                      formPublishMode === 'immediate'
+                        ? 'border-emerald-500 bg-emerald-500/15 text-emerald-300 shadow-sm'
+                        : 'border-[#374151] text-gray-400 hover:text-white hover:border-gray-500'
+                    }`}
+                  >
+                    <Zap size={14} className={formPublishMode === 'immediate' ? 'text-emerald-400' : ''} />
+                    <span>Publicar Agora</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFormPublishMode('scheduled');
+                      const checkDate = new Date(`${formScheduledDate}T${formScheduledTime}:00`);
+                      if (isNaN(checkDate.getTime()) || checkDate.getTime() <= Date.now()) {
+                        const target = new Date();
+                        target.setDate(target.getDate() + 1);
+                        target.setHours(7, 0, 0, 0);
+                        setFormScheduledDate(getLocalDateString(target));
+                        setFormScheduledTime(getLocalTimeString(target));
+                      }
+                    }}
+                    className={`flex items-center justify-center gap-2 py-2 px-3 rounded-xl border text-xs font-semibold transition cursor-pointer ${
+                      formPublishMode === 'scheduled'
+                        ? 'border-blue-500 bg-blue-500/15 text-blue-300 shadow-sm'
+                        : 'border-[#374151] text-gray-400 hover:text-white hover:border-gray-500'
+                    }`}
+                  >
+                    <CalendarClock size={14} className={formPublishMode === 'scheduled' ? 'text-blue-400' : ''} />
+                    <span>Agendar Publicação</span>
+                  </button>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[11px] text-gray-400 mb-1">Data</label>
-                    <input
-                      type="date"
-                      value={formScheduledDate}
-                      onChange={(e) => setFormScheduledDate(e.target.value)}
-                      className="w-full bg-[#111827] border border-[#374151] rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500"
-                    />
+                {formPublishMode === 'immediate' ? (
+                  <p className="text-[11px] text-gray-400 flex items-center gap-1.5 pt-1">
+                    <CheckCircle2 size={13} className="text-emerald-400 shrink-0" />
+                    <span>O item ficará imediatamente ativo e visível para todos os membros no app.</span>
+                  </p>
+                ) : (
+                  <div className="space-y-2.5 pt-1">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[11px] text-gray-400 mb-1">Data *</label>
+                        <input
+                          type="date"
+                          min={getLocalDateString()}
+                          value={formScheduledDate}
+                          onChange={(e) => setFormScheduledDate(e.target.value)}
+                          className="w-full bg-[#111827] border border-[#374151] rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500"
+                          required={formPublishMode === 'scheduled'}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] text-gray-400 mb-1">Horário *</label>
+                        <input
+                          type="time"
+                          value={formScheduledTime}
+                          onChange={(e) => setFormScheduledTime(e.target.value)}
+                          className="w-full bg-[#111827] border border-[#374151] rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500"
+                          required={formPublishMode === 'scheduled'}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="p-2.5 bg-blue-950/40 border border-blue-800/40 rounded-lg text-[11px] text-blue-200">
+                      ☁️ <strong>Agendamento no Servidor:</strong> O Cloudflare Worker publicará este conteúdo automaticamente na data/hora marcada, sem que ninguém precise abrir o painel.
+                    </div>
                   </div>
-                  <div>
-                    <label className="block text-[11px] text-gray-400 mb-1">Horário</label>
-                    <input
-                      type="time"
-                      value={formScheduledTime}
-                      onChange={(e) => setFormScheduledTime(e.target.value)}
-                      className="w-full bg-[#111827] border border-[#374151] rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500"
-                    />
-                  </div>
-                </div>
+                )}
               </div>
 
               {/* Botões do Modal */}
@@ -1536,9 +1629,19 @@ export const EstudosDevocionaisManager: React.FC<EstudosDevocionaisManagerProps>
                 <button
                   type="submit"
                   disabled={isSaving}
-                  className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:opacity-50 text-white font-semibold text-sm transition-all cursor-pointer shadow-lg shadow-blue-600/20"
+                  className={`px-6 py-2.5 rounded-xl text-white font-semibold text-sm transition-all cursor-pointer shadow-lg ${
+                    formPublishMode === 'scheduled'
+                      ? 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 shadow-blue-600/20'
+                      : 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 shadow-emerald-600/20'
+                  } disabled:opacity-50`}
                 >
-                  {isSaving ? 'Salvando...' : editingItem ? 'Salvar Alterações' : 'Publicar'}
+                  {isSaving
+                    ? 'Salvando...'
+                    : formPublishMode === 'scheduled'
+                    ? 'Agendar Publicação'
+                    : editingItem
+                    ? 'Salvar e Publicar'
+                    : 'Publicar Agora'}
                 </button>
               </div>
             </form>

@@ -18,6 +18,8 @@ import {
   CheckCircle2,
   AlertCircle,
   Calendar,
+  CalendarClock,
+  Zap,
   Download,
   Loader2,
   Image as ImageIcon,
@@ -48,6 +50,19 @@ import {
 } from '@/lib/storage';
 import { BIBLE_BOOKS, extractBibleReference } from '@/lib/bibleExtractor';
 import LoginModal from '@/components/LoginModal';
+
+function getLocalDateString(d = new Date()): string {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function getLocalTimeString(d = new Date()): string {
+  const hours = String(d.getHours()).padStart(2, '0');
+  const minutes = String(d.getMinutes()).padStart(2, '0');
+  return `${hours}:${minutes}`;
+}
 
 export default function PerfilPage() {
   const [user, setUser] = useState<TheleiosUser | null>(() => getCurrentUser());
@@ -153,21 +168,42 @@ export default function PerfilPage() {
   // ─── Estado do Upload Rápido (Exclusivo para Administrador) ────────────────
   const [showAdminUploadModal, setShowAdminUploadModal] = useState(false);
   const [adminUploadTab, setAdminUploadTab] = useState<'devocionais' | 'estudos'>('devocionais');
+  const [adminPublishMode, setAdminPublishMode] = useState<'immediate' | 'scheduled'>('immediate');
   const [adminDocFile, setAdminDocFile] = useState<File | null>(null);
   const [adminTitle, setAdminTitle] = useState('');
   const [adminContent, setAdminContent] = useState('');
   const [adminBook, setAdminBook] = useState('');
   const [adminChapter, setAdminChapter] = useState<number | ''>('');
-  const [adminDate, setAdminDate] = useState(() => new Date().toISOString().split('T')[0]);
-  const [adminTime, setAdminTime] = useState(() => {
-    const nowD = new Date();
-    return `${String(nowD.getHours()).padStart(2, '0')}:${String(nowD.getMinutes()).padStart(2, '0')}`;
-  });
+  const [adminDate, setAdminDate] = useState(() => getLocalDateString());
+  const [adminTime, setAdminTime] = useState(() => getLocalTimeString());
   const [adminCoverFile, setAdminCoverFile] = useState<File | null>(null);
   const [adminCoverPreview, setAdminCoverPreview] = useState<string>('');
   const [adminAutoDetected, setAdminAutoDetected] = useState<{ book: string; chapter: number } | null>(null);
   const [isSubmittingAdminStudy, setIsSubmittingAdminStudy] = useState(false);
   const [adminUploadFeedback, setAdminUploadFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  const setScheduleShortcut = (type: 'tonight' | 'tomorrow_morning' | 'tomorrow_evening' | 'sunday') => {
+    const target = new Date();
+    if (type === 'tonight') {
+      target.setHours(20, 0, 0, 0);
+      if (target.getTime() <= Date.now()) {
+        target.setDate(target.getDate() + 1);
+      }
+    } else if (type === 'tomorrow_morning') {
+      target.setDate(target.getDate() + 1);
+      target.setHours(7, 0, 0, 0);
+    } else if (type === 'tomorrow_evening') {
+      target.setDate(target.getDate() + 1);
+      target.setHours(19, 0, 0, 0);
+    } else if (type === 'sunday') {
+      const daysUntilSunday = (7 - target.getDay()) % 7 || 7;
+      target.setDate(target.getDate() + daysUntilSunday);
+      target.setHours(8, 0, 0, 0);
+    }
+    setAdminDate(getLocalDateString(target));
+    setAdminTime(getLocalTimeString(target));
+    setAdminPublishMode('scheduled');
+  };
 
   // Preview de capa selecionada
   useEffect(() => {
@@ -222,6 +258,9 @@ export default function PerfilPage() {
     setAdminCoverFile(null);
     setAdminCoverPreview('');
     setAdminUploadFeedback(null);
+    setAdminPublishMode('immediate');
+    setAdminDate(getLocalDateString());
+    setAdminTime(getLocalTimeString());
 
     if (adminUploadTab === 'estudos') {
       const detected = extractBibleReference(cleanTitle);
@@ -279,13 +318,33 @@ export default function PerfilPage() {
       const contentText = adminContent.trim() || `Documento anexado: ${adminDocFile.name}`;
 
       let scheduledIso: string | null = null;
-      if (adminDate) {
-        const timeStr = adminTime || '00:00';
-        scheduledIso = new Date(`${adminDate}T${timeStr}:00`).toISOString();
-      } else {
-        scheduledIso = new Date().toISOString();
+      let isFuture = false;
+
+      if (adminPublishMode === 'scheduled') {
+        if (!adminDate) {
+          setAdminUploadFeedback({ type: 'error', message: 'Selecione a data para o agendamento.' });
+          setIsSubmittingAdminStudy(false);
+          return;
+        }
+        const timeStr = adminTime || '07:00';
+        const dateObj = new Date(`${adminDate}T${timeStr}:00`);
+        if (isNaN(dateObj.getTime())) {
+          setAdminUploadFeedback({ type: 'error', message: 'Data ou horário de agendamento inválidos.' });
+          setIsSubmittingAdminStudy(false);
+          return;
+        }
+        if (dateObj.getTime() <= Date.now()) {
+          setAdminUploadFeedback({
+            type: 'error',
+            message: 'Para agendar, a data e horário devem ser no futuro. Se deseja publicar imediatamente, selecione "Publicar Agora".',
+          });
+          setIsSubmittingAdminStudy(false);
+          return;
+        }
+        scheduledIso = dateObj.toISOString();
+        isFuture = true;
       }
-      const isFuture = Boolean(scheduledIso && new Date(scheduledIso).getTime() > Date.now());
+
       const status = isFuture ? 'AGENDADO' : 'PUBLICADO';
       const published = !isFuture;
 
@@ -309,8 +368,17 @@ export default function PerfilPage() {
 
       const res = await createStudyFromApp(payload, phone, userIdentifier);
       if (res.success) {
+        const formattedDate = scheduledIso
+          ? new Date(scheduledIso).toLocaleDateString('pt-BR', {
+              day: '2-digit',
+              month: '2-digit',
+              year: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit',
+            })
+          : '';
         const successMsg = isFuture
-          ? `⏰ ${studyType} "${adminTitle.trim()}" agendado com sucesso para ${new Date(scheduledIso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}!`
+          ? `⏰ ${studyType} "${adminTitle.trim()}" agendado com sucesso para ${formattedDate}! O servidor publicará automaticamente na data marcada sem precisar deixar o app aberto.`
           : `✅ ${studyType} "${adminTitle.trim()}" publicado com sucesso!`;
         setAdminUploadFeedback({
           type: 'success',
@@ -324,8 +392,11 @@ export default function PerfilPage() {
         setAdminChapter('');
         setAdminCoverFile(null);
         setAdminCoverPreview('');
+        setAdminPublishMode('immediate');
+        setAdminDate(getLocalDateString());
+        setAdminTime(getLocalTimeString());
       } else {
-        setAdminUploadFeedback({ type: 'error', message: res.error || 'Erro ao publicar item.' });
+        throw new Error(res.error || 'Erro ao publicar item.');
       }
     } catch (err: any) {
       setAdminUploadFeedback({ type: 'error', message: err.message || 'Erro de conexão ao publicar.' });
@@ -1627,30 +1698,120 @@ export default function PerfilPage() {
                     </div>
                   )}
 
-                  {/* Data e Horário de Publicação / Agendamento */}
-                  <div>
-                    <div className="flex items-center justify-between mb-1">
-                      <label className="block text-xs font-bold text-[var(--color-text-muted)]">
-                        Data e Horário de Publicação
+                  {/* Modo de Publicação: Imediato vs Agendado */}
+                  <div className="space-y-3 p-3 bg-[var(--color-surface-alt)] border border-[var(--color-border)] rounded-xl">
+                    <div>
+                      <label className="block text-xs font-bold text-[var(--color-text-muted)] uppercase tracking-wider mb-2">
+                        Modo de Publicação
                       </label>
-                      <span className="text-[10px] text-blue-400">
-                        Futuro = Agendado no servidor
-                      </span>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setAdminPublishMode('immediate')}
+                          className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border text-xs font-semibold transition cursor-pointer ${
+                            adminPublishMode === 'immediate'
+                              ? 'border-emerald-500 bg-emerald-500/15 text-emerald-300 shadow-sm'
+                              : 'border-[var(--color-border)] text-[var(--color-text-muted)] hover:text-white hover:border-gray-500'
+                          }`}
+                        >
+                          <Zap size={15} className={adminPublishMode === 'immediate' ? 'text-emerald-400' : ''} />
+                          <span>Publicar Agora</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setAdminPublishMode('scheduled');
+                            const checkDate = new Date(`${adminDate}T${adminTime}:00`);
+                            if (isNaN(checkDate.getTime()) || checkDate.getTime() <= Date.now()) {
+                              setScheduleShortcut('tomorrow_morning');
+                            }
+                          }}
+                          className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border text-xs font-semibold transition cursor-pointer ${
+                            adminPublishMode === 'scheduled'
+                              ? 'border-blue-500 bg-blue-500/15 text-blue-300 shadow-sm'
+                              : 'border-[var(--color-border)] text-[var(--color-text-muted)] hover:text-white hover:border-gray-500'
+                          }`}
+                        >
+                          <CalendarClock size={15} className={adminPublishMode === 'scheduled' ? 'text-blue-400' : ''} />
+                          <span>Agendar Publicação</span>
+                        </button>
+                      </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <input
-                        type="date"
-                        value={adminDate}
-                        onChange={(e) => setAdminDate(e.target.value)}
-                        className="w-full px-3 py-2 bg-[var(--color-surface-alt)] border border-[var(--color-border)] rounded-xl text-xs text-white focus:outline-none focus:border-blue-500"
-                      />
-                      <input
-                        type="time"
-                        value={adminTime}
-                        onChange={(e) => setAdminTime(e.target.value)}
-                        className="w-full px-3 py-2 bg-[var(--color-surface-alt)] border border-[var(--color-border)] rounded-xl text-xs text-white focus:outline-none focus:border-blue-500"
-                      />
-                    </div>
+
+                    {adminPublishMode === 'immediate' ? (
+                      <p className="text-[11px] text-[var(--color-text-muted)] flex items-center gap-1.5">
+                        <CheckCircle2 size={13} className="text-emerald-400 shrink-0" />
+                        <span>O conteúdo ficará imediatamente visível para todos os membros no app.</span>
+                      </p>
+                    ) : (
+                      <div className="space-y-2.5 pt-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] text-blue-300 font-medium flex items-center gap-1.5">
+                            <Clock size={13} className="text-blue-400 shrink-0" />
+                            <span>Defina a data e horário para publicação automática:</span>
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="block text-[10px] uppercase font-bold text-[var(--color-text-muted)] mb-1">
+                              Data *
+                            </label>
+                            <input
+                              type="date"
+                              min={getLocalDateString()}
+                              value={adminDate}
+                              onChange={(e) => setAdminDate(e.target.value)}
+                              className="w-full px-3 py-2 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl text-xs text-white focus:outline-none focus:border-blue-500"
+                              required={adminPublishMode === 'scheduled'}
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] uppercase font-bold text-[var(--color-text-muted)] mb-1">
+                              Horário *
+                            </label>
+                            <input
+                              type="time"
+                              value={adminTime}
+                              onChange={(e) => setAdminTime(e.target.value)}
+                              className="w-full px-3 py-2 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl text-xs text-white focus:outline-none focus:border-blue-500"
+                              required={adminPublishMode === 'scheduled'}
+                            />
+                          </div>
+                        </div>
+
+                        {/* Atalhos rápidos de agendamento */}
+                        <div className="flex flex-wrap gap-1.5 pt-1 items-center">
+                          <span className="text-[10px] text-[var(--color-text-muted)] mr-1">Atalhos:</span>
+                          <button
+                            type="button"
+                            onClick={() => setScheduleShortcut('tomorrow_morning')}
+                            className="text-[10px] px-2.5 py-1 rounded-lg bg-[var(--color-surface)] hover:bg-blue-900/30 border border-[var(--color-border)] text-blue-300 transition-colors cursor-pointer"
+                          >
+                            Amanhã 07:00
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setScheduleShortcut('tomorrow_evening')}
+                            className="text-[10px] px-2.5 py-1 rounded-lg bg-[var(--color-surface)] hover:bg-blue-900/30 border border-[var(--color-border)] text-blue-300 transition-colors cursor-pointer"
+                          >
+                            Amanhã 19:00
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setScheduleShortcut('sunday')}
+                            className="text-[10px] px-2.5 py-1 rounded-lg bg-[var(--color-surface)] hover:bg-blue-900/30 border border-[var(--color-border)] text-blue-300 transition-colors cursor-pointer"
+                          >
+                            Domingo 08:00
+                          </button>
+                        </div>
+
+                        <div className="p-2.5 bg-blue-950/40 border border-blue-800/40 rounded-lg text-[11px] text-blue-200 leading-relaxed">
+                          ☁️ <strong>Agendamento no Servidor:</strong> O Cloudflare Worker liberará este conteúdo automaticamente na data/hora marcada, sem que você precise manter o tablet ou app aberto.
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Mensagem / Resumo / Observação */}
@@ -1721,17 +1882,26 @@ export default function PerfilPage() {
                     <button
                       type="submit"
                       disabled={isSubmittingAdminStudy}
-                      className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-xl transition-all cursor-pointer shadow flex items-center gap-1.5"
+                      className={`px-5 py-2.5 text-white text-xs font-bold rounded-xl transition-all cursor-pointer shadow flex items-center gap-1.5 ${
+                        adminPublishMode === 'scheduled'
+                          ? 'bg-blue-600 hover:bg-blue-500'
+                          : 'bg-emerald-600 hover:bg-emerald-500'
+                      }`}
                     >
                       {isSubmittingAdminStudy ? (
                         <>
                           <Loader2 size={14} className="animate-spin" />
-                          <span>Publicando...</span>
+                          <span>{adminPublishMode === 'scheduled' ? 'Agendando...' : 'Publicando...'}</span>
+                        </>
+                      ) : adminPublishMode === 'scheduled' ? (
+                        <>
+                          <CalendarClock size={14} />
+                          <span>Agendar Publicação</span>
                         </>
                       ) : (
                         <>
-                          <UploadCloud size={14} />
-                          <span>Salvar e Publicar</span>
+                          <Zap size={14} />
+                          <span>Publicar Agora</span>
                         </>
                       )}
                     </button>
